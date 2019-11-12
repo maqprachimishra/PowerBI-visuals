@@ -32,20 +32,17 @@ module powerbi.extensibility.visual {
     import EnumerateVisualObjectInstancesOptions = powerbi.EnumerateVisualObjectInstancesOptions;
     import createLegend = powerbi.extensibility.utils.chart.legend.createLegend;
     import ILegend = powerbi.extensibility.utils.chart.legend.ILegend;
-    import Legend = powerbi.extensibility.utils.chart.legend;
+    import legend = powerbi.extensibility.utils.chart.legend;
     import LegendData = powerbi.extensibility.utils.chart.legend.LegendData;
     import LegendDataPoint = powerbi.extensibility.utils.chart.legend.LegendDataPoint;
     import LegendIcon = powerbi.extensibility.utils.chart.legend.LegendIcon;
     import LegendPosition = powerbi.extensibility.utils.chart.legend.LegendPosition;
-    import SVGUtil = powerbi.extensibility.utils.svg;
-    import ClassAndSelector = powerbi.extensibility.utils.svg.CssConstants.ClassAndSelector;
-    import createClassAndSelector = powerbi.extensibility.utils.svg.CssConstants.createClassAndSelector;
     import IInteractivityService = powerbi.extensibility.utils.interactivity.IInteractivityService;
     import createInteractivityService = powerbi.extensibility.utils.interactivity.createInteractivityService;
     import DataViewObjectsParser = powerbi.extensibility.utils.dataview.DataViewObjectsParser;
     import TextProperties = powerbi.extensibility.utils.formatting.TextProperties;
     import textMeasurementService = powerbi.extensibility.utils.formatting.textMeasurementService;
-    import ValueFormatter = powerbi.extensibility.utils.formatting.valueFormatter;
+    import valueFormatter = powerbi.extensibility.utils.formatting.valueFormatter;
 
     export class ThermometerSettings extends DataViewObjectsParser {
         public legend: LegendSettings = new LegendSettings();
@@ -82,11 +79,8 @@ module powerbi.extensibility.visual {
     }
 
     export class Thermometer implements IVisual {
-        private static legendPropertyIdentifier: DataViewObjectPropertyIdentifier = {
-            objectName: 'legend',
-            propertyName: 'fill'
-        };
         private viewport: IViewport;
+        private events: IVisualEventService;
         // tslint:disable-next-line:no-any
         private settings : DataViewObjectsParser;
         private svg: d3.Selection<SVGElement>;
@@ -104,7 +98,6 @@ module powerbi.extensibility.visual {
         private viewModel: IThermometerViewModel;
         private fill: string;
         private border: string;
-        private thermometerDiv: Selection<{}>;
         private interactivityService: IInteractivityService;
         private host: IVisualHost;
         private legend: ILegend;
@@ -117,9 +110,8 @@ module powerbi.extensibility.visual {
         private legendsFormatter : any ;
         // tslint:disable-next-line:no-any
         private h1 : any; private h2 : any; private h3 : any; private h4 : any;
-        private prevDataViewObjects : {} = {};
 
-        /** This is called once when the visual is initialially created */
+        // This is called once when the visual is initialially created
         constructor(options: VisualConstructorOptions) {
             this.host = options.host;
             const svg : d3.Selection<SVGAElement> = this.svg = d3.select(options.element)
@@ -129,10 +121,11 @@ module powerbi.extensibility.visual {
             this.interactivityService = createInteractivityService(this.host);
             this.body.style('cursor', 'default');
             this.legend = createLegend(
-                $(options.element),
+                options.element,
                 false,
                 null,
                 true);
+            this.events = options.host.eventService;
         }
 
         private static getValue<T>(dataView: DataView, objectName: string, key: string, defaultValue: T): T {
@@ -216,8 +209,9 @@ module powerbi.extensibility.visual {
                     return { solid: { color: '#D0EEF7' } };
             }
         }
-        /** Update is called for data updates, resizes & formatting changes */
-        public update(options: VisualUpdateOptions) : void {
+        // Update is called for data updates, resizes & formatting changes
+        public update(options: VisualUpdateOptions) : void {            
+            this.events.renderingStarted(options);
             this.viewport = options.viewport;
             if (!options.dataViews) {
                 return;
@@ -272,26 +266,41 @@ module powerbi.extensibility.visual {
                     fontSize: `${((height * 0.1) * 0.03) * 16}px`
                 };
                 let tickwidth: number = 0;
+                let unit = d3.selectAll('.tick:last-of-type text').text().split(" ")[1];
+                let rest_digit : boolean;
+
+                if (unit !== "" && unit.match("^\\d+$")){
+                    rest_digit = true;
+                }
                 tickwidth = textMeasurementService.measureSvgTextWidth(measureTextProperties1);
                 const thisContext : this = this;
                 const ticks : d3.selection.Group = this.svg.selectAll('.tick text')[0];
+
                 // tslint:disable-next-line:typedef
                 ticks.forEach(element =>  {
                     // tslint:disable-next-line:no-any
                     let ele : any;
                     ele = element;
-                    ele.textContent = thisContext.getTMS(
-                        ele.textContent, ((height * 0.1) * 0.03) * 16,
-                        tickwidth + (options.viewport.width - (tickwidth + tickstarting + 9)));
+                    if (rest_digit){
+                        ele.textContent = thisContext.getTMS(
+                            ele.textContent.split(" ")[0], ((height * 0.1) * 0.03) * 16,
+                            tickwidth + (options.viewport.width - (tickwidth + tickstarting + 9)));
+                    }
+                    else{
+                        ele.textContent = thisContext.getTMS(
+                            ele.textContent, ((height * 0.1) * 0.03) * 16,
+                            tickwidth + (options.viewport.width - (tickwidth + tickstarting + 9)));
+                    }
                 });
 
                 // Adding title for legends
                 d3.selectAll('.legendItem > title')
                     // tslint:disable-next-line:no-any
-                    .text(function (d : any , i : number) : any  {
+                    .text( (d:any, i:number)=> {
                         return thisContext.legendsTitleData[i];
                     });
             }
+            this.events.renderingFinished(options);
         }
         public enumerateObjectInstances(options: EnumerateVisualObjectInstancesOptions): VisualObjectInstance[] {
             const instances: VisualObjectInstance[] = [];
@@ -367,14 +376,14 @@ module powerbi.extensibility.visual {
             }
             if (options.dataViews[0].categorical.values[0].source.format &&
                 options.dataViews[0].categorical.values[0].source.format.indexOf('%') !== -1) {
-                this.valFormatter = ValueFormatter.create({
+                this.valFormatter = valueFormatter.create({
                     format: this.dataView.categorical.values[0].source.format,
                     value: Thermometer.getValue(this.dataView, 'config', 'valDisplayUnits', 0) === 0 ?
                         0 : Thermometer.getValue(this.dataView, 'config', 'valDisplayUnits', 0),
                     precision: Thermometer.getValue(this.dataView, 'config', 'valDecimalValue', 0)
                 });
             } else {
-                this.valFormatter = ValueFormatter.create({
+                this.valFormatter = valueFormatter.create({
                     format: this.dataView.categorical.values[0].source.format,
                     value: Thermometer.getValue(this.dataView, 'config', 'valDisplayUnits', 0) === 0 ?
                         displayVal : Thermometer.getValue(this.dataView, 'config', 'valDisplayUnits', 0),
@@ -383,14 +392,14 @@ module powerbi.extensibility.visual {
             }
             if (options.dataViews[0].categorical.values[0].source.format &&
                 options.dataViews[0].categorical.values[0].source.format.indexOf('%') !== -1) {
-                this.legendsFormatter = ValueFormatter.create({
+                this.legendsFormatter = valueFormatter.create({
                     format: this.dataView.categorical.values[0].source.format,
                     value: Thermometer.getValue(this.dataView, 'legend', 'displayUnits', 0) === 0 ?
                         0 : Thermometer.getValue(this.dataView, 'legend', 'displayUnits', 0),
                     precision: Thermometer.getValue(this.dataView, 'legend', 'decimalValue', 0)
                 });
             } else {
-                this.legendsFormatter = ValueFormatter.create({
+                this.legendsFormatter = valueFormatter.create({
                     format: this.dataView.categorical.values[0].source.format,
                     value: Thermometer.getValue(this.dataView, 'legend', 'displayUnits', 0) === 0 ?
                         displayVal : Thermometer.getValue(this.dataView, 'legend', 'displayUnits', 0),
@@ -492,7 +501,7 @@ module powerbi.extensibility.visual {
 
         private getRangeColor() : void {
             const settings: ThermometerSettings = ThermometerSettings.parse<ThermometerSettings>(this.dataView);
-            const legendData : Legend.LegendData = this.createLegendData(this.dataView, this.host, settings);
+            const legendData : legend.LegendData = this.createLegendData(this.dataView, this.host, settings);
             this.viewModel = {
                 dataView: this.dataView,
                 settings: settings,
@@ -564,14 +573,15 @@ module powerbi.extensibility.visual {
                     this.legendsTitleData.push(`${low[parseInt(typeMeta, 10) - 1]}${'-'}${high[parseInt(typeMeta, 10) - 1]}`);
 
                     return {
-                        label: (`${thisContext.legendsFormatter.format(low[parseInt(typeMeta, 10) - 1])}${'-'}` +
-                            `${thisContext.legendsFormatter.format(high[parseInt(typeMeta, 10) - 1])}`) as string,
+                        label: <string>(`${thisContext.legendsFormatter.format(low[parseInt(typeMeta, 10) - 1])}${'-'}` +
+                            `${thisContext.legendsFormatter.format(high[parseInt(typeMeta, 10) - 1])}`),
                         color: Thermometer.getFill(dataView, `${'fill'}${typeMeta}`).solid.color,
                         icon: LegendIcon.Circle,
-                        selected: false,
+                        selected:false,
                         identity: host.createSelectionIdBuilder()
                             .withMeasure(typeMeta)
                             .createSelectionId()
+
                     };
                 });
 
@@ -768,19 +778,19 @@ module powerbi.extensibility.visual {
             }
             //const This = this;
             const titleFormatter : utils.formatting.IValueFormatter
-            = ValueFormatter.create({
+            = valueFormatter.create({
                 format: this.dataView.categorical.values[0].source.format
             });
             d3.selectAll('.y.axis>.tick')
                 .append('title')
                 // tslint:disable-next-line:no-any
-                .text(function (d : any) : any {
+                .text( (d:any)=> {
                     return `${titleFormatter.format(d)} ${postFix}`;
                 });
         }
 
         private drawTarget(width: number, height: number, radius: number, padding: number) : void {
-            const postFix : '' = Thermometer.getValue(this.dataView, 'config', 'postfix', '');
+            let postFix : '' = Thermometer.getValue(this.dataView, 'config', 'postfix', '');
             d3.select('.yLeftAxis.axis').attr('visibility', 'visible');
             const target : number = this.data.targetValue;
 
@@ -788,10 +798,8 @@ module powerbi.extensibility.visual {
             const min : number = this.data.min;
             const max : number = this.data.max;
             const percentage : number = (zeroValue - padding) * ((target - min) / (max - min));
-
             const yPos : number = zeroValue - percentage;
-
-            const sText : string = `${target} ${postFix}`;
+            let sText : string = `${target} ${postFix}`;
             let fTextWidth : number;
             let iTextHeight : number;
             const textProperties: TextProperties = {
@@ -800,7 +808,7 @@ module powerbi.extensibility.visual {
                 fontSize: `${(radius * 0.48)}px`
             };
             // Target information adding
-            const targetFormatter : utils.formatting.IValueFormatter = ValueFormatter.create({
+            const targetFormatter : utils.formatting.IValueFormatter = valueFormatter.create({
                 format: this.dataView.categorical.values[1].source.format
             });
             fTextWidth = textMeasurementService.measureSvgTextWidth(textProperties);
@@ -813,53 +821,19 @@ module powerbi.extensibility.visual {
                 .attr('y1', yPos)
                 .attr('x2', (width - radius) / 2 - (radius * 0.3))
                 .attr('y2', yPos);
-
+            
             const textPropertiesNew: TextProperties = {
                 text: `${this.valFormatter.format(parseFloat(sText))} ${postFix}`,
                 fontFamily: 'Segoe UI',
                 fontSize: `${(radius * 0.48)}px`
             };
+            if ((`${postFix}`).match("^\\d+$")){
+                textPropertiesNew.text = `${this.valFormatter.format(parseFloat(sText))}`;
+                postFix = '';
+            }
             const fTextWidthNew : number = textMeasurementService.measureSvgTextWidth(textPropertiesNew);
-            const iTextHeightNew : number = textMeasurementService.measureSvgTextHeight(textPropertiesNew);
             if (postFix) {
-                if (this.legend.getOrientation() === LegendPosition.Left || this.legend.getOrientation() === LegendPosition.LeftCenter) {
-                    const legendsWidth : number = $('.legend').width();
-                    let xpos : number = (width - radius) / 2 - (radius * 0.5) - fTextWidthNew;
-                    if (xpos < legendsWidth) {
-                        xpos = legendsWidth;
-                    }
-                    this.svg.append('text')
-                        .classed('targetText', true)
-                        .attr({
-                            x: `${xpos}px`,
-                            y: `${(yPos) + iTextHeight * 0.1 + radius * 0.1}px`,
-                            'font-size': `${(radius * 0.48)}px`, 'text-anchor': 'left'
-                        })
-                        .text(this.getTMS(
-                            `${this.valFormatter.format(parseFloat(sText))} ${postFix}`,
-                            (radius * 0.48),
-                            (width / 2) - 50 - legendsWidth)
-                        );
-                } else {
-                    let xpos : number = (width - radius) / 2 - (radius * 0.5) - fTextWidthNew;
-                    if (xpos < 0) {
-                        xpos = 0;
-                    }
-                    this.svg.append('text')
-                        .classed('targetText', true)
-                        .attr({
-                            x: `${xpos}px`,
-                            y: `${(yPos) + iTextHeight * 0.1 + radius * 0.1}px`,
-                            'font-size': `${(radius * 0.48)}px`,
-                            'text-anchor': 'left'
-                        })
-                        .text(this.getTMS(
-                            `${this.valFormatter.format(parseFloat(sText))} ${postFix}`,
-                            (radius * 0.48),
-                            (width / 2) - 50)
-                        );
-                }
-
+                this.drawTargetPostFix(width, height, radius, padding, fTextWidthNew, iTextHeight, sText, postFix, yPos);
             } else {
                 if (this.legend.getOrientation() === LegendPosition.Left || this.legend.getOrientation() === LegendPosition.LeftCenter) {
                     const legendsWidth : number = $('.legend').width();
@@ -906,6 +880,46 @@ module powerbi.extensibility.visual {
                 .text(`${targetFormatter.format(parseFloat(sText))} ${postFix}`);
         }
 
+        private drawTargetPostFix (width: number, height: number, radius: number, padding: number, fTextWidthNew : number, iTextHeight: number, sText : string, postFix : '', yPos : number): void {
+            if (this.legend.getOrientation() === LegendPosition.Left || this.legend.getOrientation() === LegendPosition.LeftCenter) {
+                const legendsWidth : number = $('.legend').width();
+                let xpos : number = (width - radius) / 2 - (radius * 0.5) - fTextWidthNew;
+                if (xpos < legendsWidth) {
+                    xpos = legendsWidth;
+                }
+                this.svg.append('text')
+                    .classed('targetText', true)
+                    .attr({
+                        x: `${xpos}px`,
+                        y: `${(yPos) + iTextHeight * 0.1 + radius * 0.1}px`,
+                        'font-size': `${(radius * 0.48)}px`, 'text-anchor': 'left'
+                    })
+                    .text(this.getTMS(
+                        `${this.valFormatter.format(parseFloat(sText))} ${postFix}`,
+                        (radius * 0.48),
+                        (width / 2) - 50 - legendsWidth)
+                    );
+            } else {
+                let xpos : number = (width - radius) / 2 - (radius * 0.5) - fTextWidthNew;
+                if (xpos < 0) {
+                    xpos = 0;
+                }
+                this.svg.append('text')
+                    .classed('targetText', true)
+                    .attr({
+                        x: `${xpos}px`,
+                        y: `${(yPos) + iTextHeight * 0.1 + radius * 0.1}px`,
+                        'font-size': `${(radius * 0.48)}px`,
+                        'text-anchor': 'left'
+                    })
+                    .text(this.getTMS(
+                        `${this.valFormatter.format(parseFloat(sText))} ${postFix}`,
+                        (radius * 0.48),
+                        (width / 2) - 50)
+                    );
+            }
+        }
+
         private drawText(width: number, height: number, radius: number, padding: number) : void {
             this.text
                 .text(this.getTMS(
@@ -920,7 +934,7 @@ module powerbi.extensibility.visual {
                     'font-family': 'Segoe UI',
                     'font-size': `${(radius * 0.03)}em`
                 });
-            const titleFormatter : utils.formatting.IValueFormatter = ValueFormatter.create({
+            const titleFormatter : utils.formatting.IValueFormatter = valueFormatter.create({
                 format: this.dataView.categorical.values[0].source.format
             });
             this.text.append('title')
