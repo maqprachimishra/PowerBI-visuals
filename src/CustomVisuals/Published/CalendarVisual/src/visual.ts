@@ -28,13 +28,15 @@ module powerbi.extensibility.visual {
   'use strict';
   import legend = powerbi.extensibility.utils.chart.legend;
   import createLegend = powerbi.extensibility.utils.chart.legend.createLegend;
-  import position = powerbi.extensibility.utils.chart.legend.positionChartArea;
   import LegendData = powerbi.extensibility.utils.chart.legend.LegendData;
   import ILegend = powerbi.extensibility.utils.chart.legend.ILegend;
-  import legendIcon = powerbi.extensibility.utils.chart.legend.LegendIcon;
   import LegendPosition = powerbi.extensibility.utils.chart.legend.LegendPosition;
   import IValueFormatter = powerbi.extensibility.utils.formatting.IValueFormatter;
-  import ValueFormatter = powerbi.extensibility.utils.formatting.valueFormatter;
+  import valueFormatter = powerbi.extensibility.utils.formatting.valueFormatter;
+  import createInteractivitySelectionService = powerbi.extensibility.utils.interactivity.createInteractivitySelectionService;
+  import SelectableDataPoint = powerbi.extensibility.utils.interactivity.SelectableDataPoint;
+  import IInteractivityService = powerbi.extensibility.utils.interactivity.IInteractivityService;
+
 
   // tslint:disable-next-line:no-any
   let colorsPersistObject: any = {};
@@ -157,7 +159,7 @@ module powerbi.extensibility.visual {
    * @options {VisualUpdateOptions}       : Category Column
    * @return {boolean}                    : returns true if required data is present
    */
-  function MandatoryDataPresent(options: VisualUpdateOptions): boolean {
+  function mandatoryDataPresent(options: VisualUpdateOptions): boolean {
     let isStartDate: boolean = false;
     let isEvent: boolean = false;
     // tslint:disable-next-line:no-any
@@ -185,7 +187,7 @@ module powerbi.extensibility.visual {
    * @options {VisualUpdateOptions}       : Category Column
    * @return {boolean}                    : returns true if required data is present in required format
    */
-  function MandatoryDataFormat(options: VisualUpdateOptions): boolean {
+  function mandatoryDataFormat(options: VisualUpdateOptions): boolean {
     // tslint:disable-next-line:no-any
     const dataViewCategories: any[] = options.dataViews[0].categorical.categories;
     let isStartDateFormat: boolean = false;
@@ -224,9 +226,13 @@ module powerbi.extensibility.visual {
     private legend: ILegend;
     private legendObjectProperties: DataViewObject;
     private selectionManager: ISelectionManager;
+    private interactivityService: IInteractivityService<SelectableDataPoint>;
+
     //used for persisting Calendar View
     public calendarView: string = 'month';
     public persistedDate: string = '';
+    private eventService: IVisualEventService ;
+
 
     /**
      * Persist data stored in the variable calendarView.
@@ -255,9 +261,7 @@ module powerbi.extensibility.visual {
      * @return {string}                 : returns string value that has been persisted.
      */
     public retrieveView(): string {
-      const view: string = this.settings.persistCalendarView.calendarView;
-
-      return view;
+      return this.settings.persistCalendarView.calendarView;
     }
 
     /**
@@ -287,9 +291,12 @@ module powerbi.extensibility.visual {
      * @return {string}                 : returns date value that has been persisted.
      */
     public retrieveDate(): string {
-
       const dateString: string = this.settings.persistCalendarDate.persistedDate;
-
+      if(dateString === 'today') {
+        const today: Date = new Date();
+      // tslint:disable-next-line:max-line-length
+      return monthName[(today.getMonth() + 1)] + spaceLiteral + today.getDate() + comaLiteral + spaceLiteral + today.getFullYear();
+      }
       return dateString;
     }
 
@@ -301,7 +308,7 @@ module powerbi.extensibility.visual {
      */
     // tslint:disable-next-line:no-any
     public getFormattedValue(tooltipFormat: any, d: any): string {
-      const primaryFormatter: IValueFormatter = ValueFormatter.create({
+      const primaryFormatter: IValueFormatter = valueFormatter.create({
         format: tooltipFormat
       });
 
@@ -312,6 +319,9 @@ module powerbi.extensibility.visual {
       this.options = options;
       this.host = options.host;
       this.legend = createLegend(options.element, false, null, true);
+      this.eventService = options.host.eventService;
+      this.interactivityService = createInteractivitySelectionService(this.host);
+      this.legend = createLegend(options.element, false, this.interactivityService, true);
       this.selectionManager = options.host.createSelectionManager();
       // tslint:disable-next-line:no-any
       const dashboard: d3.Selection<any> = d3.select(options.element).append('div').attr('id', 'dashboard');
@@ -357,6 +367,8 @@ module powerbi.extensibility.visual {
       let endDateLength: number;
       let startDateCategory: DataViewCategoryColumn;
       let startWeekDay: number;
+      try{
+      this.eventService.renderingStarted(options);
       const dataViews: DataView = options.dataViews[0];
       // tslint:disable-next-line:no-any
       const dataViewCategories: any[] = dataViews.categorical.categories;
@@ -384,14 +396,14 @@ module powerbi.extensibility.visual {
         .attr('id', 'calendar');
 
       //If mandatory field values are not entered, show error message
-      const isMandatoryDataPresent: boolean = MandatoryDataPresent(options);
+      const isMandatoryDataPresent: boolean = mandatoryDataPresent(options);
       if (!isMandatoryDataPresent) {
         d3.select('.fieldMessage').text(`'Start Date' and 'Event' are required fields`);
         d3.select('.fieldMessage').style('padding-top', `${(viewPortHeight / 2) - textAdjustmentValue}px`);
       }
 
       //If mandatory field values are entered, and data is not in correct format
-      const isMandatoryDataFormat: boolean = MandatoryDataFormat(options);
+      const isMandatoryDataFormat: boolean = mandatoryDataFormat(options);
       if (!isMandatoryDataFormat && isMandatoryDataPresent) {
         d3.select('.fieldMessage').text(`'Start date' should be in 'datetime' format & 'Events' should be in 'text' format.`);
         d3.select('.fieldMessage').style('padding-top', `${(viewPortHeight / 2) - textAdjustmentValue}px`);
@@ -674,7 +686,7 @@ module powerbi.extensibility.visual {
         }
       }
 
-      /*If a view that is persisted is turned off, show default view.*/
+      // If a view that is persisted is turned off, show default view.
       const persistedView: string = this.retrieveView();
       if ((persistedView === '' || persistedView === null) ||
         (persistedView === 'agendaWeek' && !this.settings.buttons.week) ||
@@ -706,11 +718,14 @@ module powerbi.extensibility.visual {
           }]
       };
       this.host.persistProperties(caption1);
-
+      this.eventService.renderingFinished(options);
+    } catch (exception) {
+      this.eventService.renderingFailed(options, exception);
+    }
     }
 
     private static parseSettings(dataView: DataView): VisualSettings {
-      return VisualSettings.parse(dataView) as VisualSettings;
+      return <VisualSettings>VisualSettings.parse(dataView);
     }
 
     /**
@@ -729,7 +744,9 @@ module powerbi.extensibility.visual {
       legends = d3.selectAll('.legendItem');
       const selectionManager: ISelectionManager = this.selectionManager;
       // tslint:disable-next-line:no-any
-      legends.on('click', function (d: any): void {
+      legends.on('click', (d: any) => {
+        let legends: any;
+        legends = d3.selectAll('.legendItem');
         if (d.tooltip !== highlightedLegend || (highlightedLegend === null) || highlightedLegend === '') {
           const selectedLegend: string = d.tooltip;
           highlightedLegend = d.tooltip;
@@ -741,7 +758,7 @@ module powerbi.extensibility.visual {
           }
           // tslint:disable-next-line:no-any
           selectionManager.select(selectedSelectionId).then((ids: any[]) => {
-            const className: string = currentThis.EncodeData(d.tooltip);
+            const className: string = currentThis.encodeData(d.tooltip);
             d3.selectAll('.event').style('opacity', ids.length > 0 ? 0.5 : 1);
             d3.selectAll(`.${className}`).style('opacity', 1);
             // tslint:disable-next-line:no-any
@@ -751,7 +768,7 @@ module powerbi.extensibility.visual {
               'fill-opacity': ids.length > 0 ? 0.5 : 1
             });
 
-            d3.select(this).attr({
+            d3.selectAll('.legendItem').attr({
               'fill-opacity': 1
             });
             selectedSelectionId = [];
@@ -759,17 +776,18 @@ module powerbi.extensibility.visual {
           (<Event>d3.event).stopPropagation();
         } else if (d.tooltip !== highlightedLegend) {
           d3.selectAll('.event').style('opacity', 1);
-          d3.selectAll('.legendItem').attr('fill-opacity', 1);
+          d3.selectAll(legends).attr('fill-opacity', 1);
           highlightedLegend = '';
         }
       });
-      d3.select('html').on('click', function (): void {
+      d3.select('html').on('click', () => {
         selectionManager.clear();
         d3.selectAll('.event').style('opacity', 1);
         d3.selectAll('.legendItem').attr('fill-opacity', 1);
         highlightedLegend = '';
       });
     }
+
 
     /**
      * Method to create legends
@@ -854,7 +872,7 @@ module powerbi.extensibility.visual {
       const THIS: this = this;
       this.addSelection(data, selectionID);
       // tslint:disable-next-line:no-any
-      $('.legend #legendGroup').on('click.load', '.navArrow', function (): any {
+      $('.legend #legendGroup').on('click.load', '.navArrow', () => {
         THIS.addSelection(data, selectionID);
       });
     }
@@ -892,13 +910,12 @@ module powerbi.extensibility.visual {
       const todayString: string = monthName[(today.getMonth() + 1)] + spaceLiteral + today.getDate() + comaLiteral + spaceLiteral + today.getFullYear();
       const persistedDate: string = this.retrieveDate();
       let showCalendarDate: string;
-      if (persistedDate === null || persistedDate === '') {
+      if (persistedDate === null || persistedDate === '' || persistedDate === 'today') {
         showCalendarDate = todayString;
         thisObj.persistedDate = showCalendarDate;
         thisObj.persistDate();
       } else {
-        showCalendarDate = this.retrieveDate();
-        thisObj.persistedDate = showCalendarDate;
+        showCalendarDate = persistedDate;
       }
       let index: number = 0;
       // tslint:disable-next-line:no-any
@@ -980,12 +997,12 @@ module powerbi.extensibility.visual {
         eventBorderColor: this.settings.events.borderColor,
 
         // tslint:disable-next-line:no-any
-        eventRender: function (event: any, element: any): void {
+        eventRender: (event: any, element: any) => {
           let className: string;
           if (eventGroupFlag) {
-            className = thisObj.EncodeData(event.group);
+            className = thisObj.encodeData(event.group);
           } else {
-            className = thisObj.EncodeData(event.title);
+            className = thisObj.encodeData(event.title);
           }
           element.attr('title', `${event.title} : ${event.description}`);
           element.addClass(className);
@@ -993,27 +1010,27 @@ module powerbi.extensibility.visual {
         }
       });
 
-      d3.select('.fc-month-button').on('click', function (): void {
+      d3.select('.fc-month-button').on('click', () => {
         thisObj.calendarView = 'month';
         thisObj.persistView();
       });
 
-      d3.select('.fc-agendaWeek-button').on('click', function (): void {
+      d3.select('.fc-agendaWeek-button').on('click', () => {
         thisObj.calendarView = 'agendaWeek';
         thisObj.persistView();
       });
 
-      d3.select('.fc-agendaDay-button').on('click', function (): void {
+      d3.select('.fc-agendaDay-button').on('click', () => {
         thisObj.calendarView = 'agendaDay';
         thisObj.persistView();
       });
 
-      d3.select('.fc-listMonth-button').on('click', function (): void {
+      d3.select('.fc-listMonth-button').on('click', () => {
         thisObj.calendarView = 'listMonth';
         thisObj.persistView();
       });
 
-      d3.select('.fc-prev-button').on('click', function (): void {
+      d3.select('.fc-prev-button').on('click', () => {
         const activeView: string = d3.select('.fc-state-active').text();
         const displayedDate: string = d3.select('.fc-center').text();
         if (activeView === 'month' || activeView === 'list') {
@@ -1031,7 +1048,7 @@ module powerbi.extensibility.visual {
           }
       });
 
-      d3.select('.fc-next-button').on('click', function (): void {
+      d3.select('.fc-next-button').on('click', () => {
         const activeView: string = d3.select('.fc-state-active').text();
         const displayedDate: string = d3.select('.fc-center').text();
 
@@ -1049,13 +1066,11 @@ module powerbi.extensibility.visual {
             thisObj.persistDate();
           }
       });
-
-      d3.select('.fc-today-button').on('click', function (): void {
-        thisObj.persistedDate = todayString;
+      d3.select('.fc-today-button').on('click', () => {
+        thisObj.persistedDate = 'today';
         thisObj.persistDate();
       });
     }
-
     // tslint:disable-next-line:no-any
     public persist(view: string): any {
       this.calendarView = view;
@@ -1108,9 +1123,7 @@ module powerbi.extensibility.visual {
 
       year = this.removeSpecialCharacter(year);
 
-      const formattedString: string = month + spaceLiteral + date + comaLiteral + spaceLiteral + year;
-
-      return formattedString;
+      return month + spaceLiteral + date + comaLiteral + spaceLiteral + year;
     }
 
     /**
@@ -1123,14 +1136,12 @@ module powerbi.extensibility.visual {
       const monthNumber: string = monthNum[month].toString();
       const date: string = '1'; // default date if user selects month and list view.
       //const formattedDate : string = date + dashLiteral + month + dashLiteral + year;
-      const formattedDate: string = month.substring(0, 3) + spaceLiteral + date + comaLiteral + spaceLiteral + year;
-
-      return formattedDate;
+      return month.substring(0, 3) + spaceLiteral + date + comaLiteral + spaceLiteral + year;
     }
     /**
      * Method to encode the variables
      */
-    public EncodeData(value: string): string {
+    public encodeData(value: string): string {
       if (value === '') {
         return value.replace('', 'sp');
       }
@@ -1167,7 +1178,7 @@ module powerbi.extensibility.visual {
         thisObj.persistedDate = showCalendarDate;
         thisObj.persistDate();
       } else {
-        showCalendarDate = this.retrieveDate();
+        showCalendarDate = persistedDate;
         thisObj.persistedDate = showCalendarDate;
       }
       let index: number = 0;
@@ -1242,12 +1253,12 @@ module powerbi.extensibility.visual {
         eventBorderColor: this.settings.events.borderColor,
 
         // tslint:disable-next-line:no-any
-        eventRender: function (event: any, element: any): void {
+        eventRender: (event: any, element: any) => {
           let className: string;
           if (eventGroupFlag) {
-            className = thisObj.EncodeData(event.group);
+            className = thisObj.encodeData(event.group);
           } else {
-            className = thisObj.EncodeData(event.title);
+            className = thisObj.encodeData(event.title);
           }
           element.attr('title', `${event.title}`);
           element.addClass(className);
@@ -1255,24 +1266,24 @@ module powerbi.extensibility.visual {
         }
       });
 
-      d3.select('.fc-month-button').on('click', function (): void {
+      d3.select('.fc-month-button').on('click', () => {
         thisObj.calendarView = 'month';
         thisObj.persistView();
       });
-      d3.select('.fc-agendaWeek-button').on('click', function (): void {
+      d3.select('.fc-agendaWeek-button').on('click', () => {
         thisObj.calendarView = 'agendaWeek';
         thisObj.persistView();
       });
-      d3.select('.fc-agendaDay-button').on('click', function (): void {
+      d3.select('.fc-agendaDay-button').on('click', () => {
         thisObj.calendarView = 'agendaDay';
         thisObj.persistView();
       });
-      d3.select('.fc-listMonth-button').on('click', function (): void {
+      d3.select('.fc-listMonth-button').on('click', () => {
         thisObj.calendarView = 'listMonth';
         thisObj.persistView();
       });
 
-      d3.select('.fc-prev-button').on('click', function (): void {
+      d3.select('.fc-prev-button').on('click', () => {
         const activeView: string = d3.select('.fc-state-active').text();
         const displayedDate: string = d3.select('.fc-center').text();
         if (activeView === 'month' || activeView === 'list') {
@@ -1290,7 +1301,7 @@ module powerbi.extensibility.visual {
           }
       });
 
-      d3.select('.fc-next-button').on('click', function (): void {
+      d3.select('.fc-next-button').on('click', () => {
         const activeView: string = d3.select('.fc-state-active').text();
         const displayedDate: string = d3.select('.fc-center').text();
         if (activeView === 'month' || activeView === 'list') {
@@ -1307,9 +1318,8 @@ module powerbi.extensibility.visual {
             thisObj.persistDate();
           }
       });
-
-      d3.select('.fc-today-button').on('click', function (): void {
-        thisObj.persistedDate = todayString;
+      d3.select('.fc-today-button').on('click', () => {
+        thisObj.persistedDate = 'today';
         thisObj.persistDate();
       });
     }

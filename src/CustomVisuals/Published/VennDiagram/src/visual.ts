@@ -334,7 +334,6 @@ module powerbi.extensibility.visual {
         }
 
             public host: IVisualHost;
-
             public circles: {} = {};
 
             public rectangle: {} = {};
@@ -633,6 +632,8 @@ module powerbi.extensibility.visual {
                 this.draw(this.width, this.height, this.viewModel);
 
                 const selectionManager: ISelectionManager = this.selectionManager;
+                this.eventService.renderingFinished(options);
+
             } catch (exception) {
                 this.eventService.renderingFailed(options, exception);
            }

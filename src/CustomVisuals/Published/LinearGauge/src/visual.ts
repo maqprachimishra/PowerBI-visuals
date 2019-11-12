@@ -1,76 +1,41 @@
-/*
- *  Power BI Visual CLI
- *
- *  Copyright (c) Microsoft Corporation
- *  All rights reserved.
- *  MIT License
- *
- *  Permission is hereby granted, free of charge, to any person obtaining a copy
- *  of this software and associated documentation files (the ''Software''), to deal
- *  in the Software without restriction, including without limitation the rights
- *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- *  copies of the Software, and to permit persons to whom the Software is
- *  furnished to do so, subject to the following conditions:
- *
- *  The above copyright notice and this permission notice shall be included in
- *  all copies or substantial portions of the Software.
- *
- *  THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- *  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- *  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- *  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- *  THE SOFTWARE.
- */
-
 module powerbi.extensibility.visual {
     import VisualTooltipDataItem = powerbi.extensibility.VisualTooltipDataItem;
-    import ValueFormatter = powerbi.extensibility.utils.formatting.valueFormatter;
+    import valueFormatter = powerbi.extensibility.utils.formatting.valueFormatter;
     import TextProperties = powerbi.extensibility.utils.formatting.TextProperties;
     import IValueFormatter = powerbi.extensibility.utils.formatting.IValueFormatter;
     import textMeasurementService = powerbi.extensibility.utils.formatting.textMeasurementService;
     import legend = powerbi.extensibility.utils.chart.legend;
     import createLegend = powerbi.extensibility.utils.chart.legend.createLegend;
-    import position = powerbi.extensibility.utils.chart.legend.positionChartArea;
+    import positionChartArea = powerbi.extensibility.utils.chart.legend.positionChartArea;
     import LegendData = powerbi.extensibility.utils.chart.legend.LegendData;
     import ILegend = powerbi.extensibility.utils.chart.legend.ILegend;
-    import legendIcon = powerbi.extensibility.utils.chart.legend.LegendIcon;
+    import LegendIcon = powerbi.extensibility.utils.chart.legend.LegendIcon;
     import LegendPosition = powerbi.extensibility.utils.chart.legend.LegendPosition;
+    import TooltipEventArgs = powerbi.extensibility.utils.tooltip.TooltipEventArgs;
+    import TooltipEnabledDataPoint = powerbi.extensibility.utils.tooltip.TooltipEnabledDataPoint;
+    import createTooltipServiceWrapper = powerbi.extensibility.utils.tooltip.createTooltipServiceWrapper;
+    import ITooltipServiceWrapper = powerbi.extensibility.utils.tooltip.ITooltipServiceWrapper;
+
     const rangeLiteral: string = `range s`;
     let legendData: LegendData;
-    // flag to check whether categorical data exists or not
     let categoryFlag: number = 0;
-    // to check drill mode
-    let prevFlag: number;
-    prevFlag = 0;
-    // to display data of particular region
-    let tooltipFLag: number;
-    tooltipFLag = 0;
-    let individualFlag: number;
-    individualFlag = 0;
-    let selectedKey: string = '';
-    // selectionId to render visual according to selection
-    let tempSelectionId: powerbi.extensibility.ISelectionId;
-    tempSelectionId = null;
+    let prevFlag: number = 0;
+    let tooltipFLag: number = 0;
+    let individualFlag: number = 0;
+    let selectedKey: string = "";
+    let tempSelectionId: powerbi.extensibility.ISelectionId = null;
 
     let uniqueValuesLegend: PrimitiveValue[];
     let dataPoints: IDataPoints[];
     let staticHost: IVisualHost;
-    let legendLength: number;
-    legendLength = 0;
-    let actualValue: number[];
-    actualValue = [];
+    let legendLength: number = 0;
+    let actualValue: number[]=[];
     let categoryLegend: ICategorySettings[];
     let linearDataPoint: ILinearDataPoint[];
-    let tooltip: ITooltip[];
-    tooltip = [];
-    let tooltipPoint: ITooltipData[];
-    tooltipPoint = [];
-    // objects to handle showtrend toggle
+    let tooltip: ITooltip[] = [];
+    let tooltipPoint: ITooltipData[] = [];
     let showTrendStatus: boolean = true;
     let trendLabelFlag: boolean = false;
-    // objects to store height of htmlelements
     let trendLabelHeight: number;
     let targetLabelHeight: number;
     export interface ILinearGauge {
@@ -139,17 +104,64 @@ module powerbi.extensibility.visual {
         selectionId: powerbi.extensibility.ISelectionId;
     }
 
-    /**
-     * Gets property value for a particular object
-     */
     export class LinearGauge implements IVisual {
+
+        public static GETDEFAULTDATA(): ILinearGauge {
+            return {
+                actual: null,
+                actualColName: "",
+                actualExists: false,
+                actualFormat: ``,
+                best: null,
+                bestColName: "",
+                bestFormat: "",
+                bestSet: false,
+                max: null,
+                maxColName: "",
+                maxFlag: false,
+                maxFormat: "",
+                min: null,
+                minColName: "",
+                minFlag: false,
+                minFormat: "",
+                scale: [],
+                scaleFormat: ``,
+                states: [],
+                target: null,
+                targetColName: "",
+                targetExists: false,
+                targetFormat: ``,
+                targetSet: false,
+                trend1ColName: "",
+                trend1Exists: false,
+                trend1Format: ``,
+                trend2ColName: "",
+                trend2Exists: false,
+                trend2Format: ``,
+                trendValueOne: 0,
+                trendValueTwo: 0,
+                value: 0,
+            };
+        }
+        public static GETDEFAULTDATAPOINT(): ILinearDataPoint {
+            return {
+                BestValue: 0,
+                actualValue: 0,
+                key: "",
+                maxValue: 0,
+                minValue: 0,
+                selectionId: null,
+                targetValue: 0,
+                trendOne: 0,
+                trendTwo: 0,
+            };
+        }
+        private actualdecimalplaces: number = 0;
         private host: IVisualHost;
         private tooltipServiceWrapper: ITooltipServiceWrapper;
         private prevDataViewObjects: DataViewObjects = {};
-        // tslint:disable-next-line:no-any
         private settings: any;
         private svg: d3.Selection<SVGElement>;
-        // tslint:disable-next-line:no-any
         private rootElement: any;
         private svgLinear: d3.Selection<SVGElement>;
         private svgLinearNext: d3.Selection<SVGElement>;
@@ -161,6 +173,7 @@ module powerbi.extensibility.visual {
         private minValueIndex: number;
         private maxValueFlag: boolean = false;
         private data: ILinearGauge;
+        private events: IVisualEventService;
         private trendValue1: d3.Selection<SVGElement>;
         private trendValue2: d3.Selection<SVGElement>;
         private bestLegend: d3.Selection<SVGElement>;
@@ -168,75 +181,22 @@ module powerbi.extensibility.visual {
         private colorsGlobal: string[];
         private legend: ILegend;
         private selectionManager: ISelectionManager;
-        // flag to determine a selection is set from bookmark or not
         private roscCallFlag: boolean = false;
         private visualOptions: VisualUpdateOptions;
-
-        //private categoryLegend: ICategorySettings[];
-        public static getDefaultData(): ILinearGauge {
-            return {
-                states: [],
-                min: null,
-                minFlag: false,
-                minColName: '',
-                minFormat: '',
-                max: null,
-                maxFlag: false,
-                maxColName: '',
-                maxFormat: '',
-                value: 0,
-                target: null,
-                actual: null,
-                scale: [],
-                trendValueOne: 0,
-                trendValueTwo: 0,
-                actualFormat: ``,
-                scaleFormat: ``,
-                targetFormat: ``,
-                trend1Format: ``,
-                trend2Format: ``,
-                targetSet: false,
-                trend1Exists: false,
-                trend2Exists: false,
-                actualExists: false,
-                targetExists: false,
-                trend1ColName: '',
-                trend2ColName: '',
-                actualColName: '',
-                targetColName: '',
-                best: null,
-                bestSet: false,
-                bestFormat: '',
-                bestColName: ''
-            };
-        }
-        public static getDefaultDataPoint(): ILinearDataPoint {
-            return {
-                key: '',
-                targetValue: 0,
-                actualValue: 0,
-                minValue: 0,
-                maxValue: 0,
-                trendOne: 0,
-                trendTwo: 0,
-                BestValue: 0,
-                selectionId: null
-            };
-        }
         constructor(options: VisualConstructorOptions) {
+            this.events = options.host.eventService;
             this.host = options.host;
             staticHost = options.host;
             this.tooltipServiceWrapper = createTooltipServiceWrapper(this.host.tooltipService, options.element);
             this.legend = createLegend(options.element, false, null, true);
             this.selectionManager = options.host.createSelectionManager();
-            // function used when bookmark is clicked
             this.selectionManager.registerOnSelectCallback(() => {
                 this.roscCallFlag = true;
                 this.update(this.visualOptions);
             });
             d3.select(options.element)
                 .style({
-                    cursor: 'default'
+                    cursor: "default"
                 });
             this.rootElement = d3.select(options.element);
             this.svg = d3.select(options.element)
@@ -279,39 +239,13 @@ module powerbi.extensibility.visual {
                 .classed(`linearSVG`, true);
             this.svgLinear = this.svg
                 .append(`g`)
-                .classed('lg_visual', true);
+                .classed("lg_visual", true);
         }
-        //Convert the this.dataViews into its view model
-        //All the variable will be populated with the value we have passed
-        // tslint:disable-next-line:cyclomatic-complexity
-        public converter(dataView: DataView, options: VisualUpdateOptions): ILinearGauge {
-            let $this: this;
-            // flag used to clear selections if drill used
+        public getDataViewValue(dataView: DataView, options: VisualUpdateOptions){
             let clearFlag: boolean = true;
-            $this = this;
-            tooltipFLag = 0;
-            let data: ILinearGauge;
-            data = LinearGauge.getDefaultData();
-            linearDataPoint = [];
-            $this.getSettings(this.dataView.metadata.objects);
-            dataPoints = [];
-            if (!dataView || !dataView.categorical || dataView.categorical.values === undefined) {
-                return;
-            }
-            let actualFlag: boolean;
-            actualFlag = false;
-            let values: DataViewValueColumns;
-            values = dataView.categorical.values;
-            if (dataView.categorical.categories) {
-                categoryFlag = 1;
-            } else {
-                categoryFlag = 0;
-            }
-            tooltip = [];
-            // array to retain the selected selection ids
-            const selectedArray: powerbi.extensibility.ISelectionId[] = $this.selectionManager.getSelectionIds();
+            const selectedArray: powerbi.extensibility.ISelectionId[] = this.selectionManager.getSelectionIds();
             for (let step: number = 0; step < dataView.categorical.values[0].values.length; step++) {
-                let tempKey: string = '';
+                let tempKey: string = "";
                 let tempActual: number = null;
                 let tempTarget: number = null;
                 let tempMin: number = null;
@@ -321,81 +255,63 @@ module powerbi.extensibility.visual {
                 let tempBest: number = null;
                 tooltipPoint = [];
                 if (categoryFlag === 1) {
+                    if (dataView.categorical.categories[0].values[step] === null || dataView.categorical.categories[0].values[step] === "") {
+                        dataView.categorical.categories[0].values[step] = "(Blank)"; }
                     tempKey = <string>dataView.categorical.categories[0].values[step];
-                    tooltipPoint.push({
-                        displayName: options.dataViews[0].categorical.categories[0].source.displayName,
-                        value: tempKey
-                    });
+                    tooltipPoint.push({ displayName: options.dataViews[0].categorical.categories[0].source.displayName, value: tempKey });
                 }
                 for (let iterator: number = 0; iterator < dataView.categorical.values.length; iterator++) {
-                    let col: DataViewMetadataColumn;
-                    col = dataView.categorical.values[iterator].source;
+                    let col: DataViewMetadataColumn = dataView.categorical.values[iterator].source;
                     if (col.roles[`Y`]) {
+                        if (dataView.categorical.values[iterator].values[step] === null) { dataView.categorical.values[iterator].values[step] = 0; }
                         tempActual = <number>dataView.categorical.values[iterator].values[step];
-                        tooltipPoint.push({
-                            displayName: col.displayName,
-                            value: this.getFormattedTooltipData(col.format, tempActual)
-                        });
+                        tooltipPoint.push({  displayName: col.displayName, value: this.getFormattedTooltipData(col.format, tempActual) });
                     } else if (col.roles[`TargetValue`]) {
+                        if (dataView.categorical.values[iterator].values[step] === null) {dataView.categorical.values[iterator].values[step] = 0; }
                         tempTarget = <number>dataView.categorical.values[iterator].values[step];
-                        tooltipPoint.push({
-                            displayName: col.displayName,
-                            value: this.getFormattedTooltipData(col.format, tempTarget)
-                        });
+                        tooltipPoint.push({ displayName: col.displayName, value: this.getFormattedTooltipData(col.format, tempTarget)});
                     } else if (col.roles[`MinValue`]) {
+                        if (dataView.categorical.values[iterator].values[step] === null) { dataView.categorical.values[iterator].values[step] = 0; }
                         this.minValueIndex = iterator;
                         this.minValueFlag = true;
                         tempMin = <number>dataView.categorical.values[iterator].values[step];
-                        tooltipPoint.push({
-                            displayName: col.displayName,
-                            value: this.getFormattedTooltipData(col.format, tempMin)
-                        });
+                        tooltipPoint.push({ displayName: col.displayName, value: this.getFormattedTooltipData(col.format, tempMin)});
                     } else if (col.roles[`MaxValue`]) {
+                        if (dataView.categorical.values[iterator].values[step] === null) {
+                            dataView.categorical.values[iterator].values[step] = 0;
+                        }
                         this.maxValueIndex = iterator;
                         this.maxValueFlag = true;
                         tempMax = <number>dataView.categorical.values[iterator].values[step];
-                        tooltipPoint.push({
-                            displayName: col.displayName,
-                            value: this.getFormattedTooltipData(col.format, tempMax)
-                        });
+                        tooltipPoint.push({ displayName: col.displayName, value: this.getFormattedTooltipData(col.format, tempMax) });
                     } else if (col.roles[`QualitativeState1Value`]) {
+                        if (dataView.categorical.values[iterator].values[step] === null) { dataView.categorical.values[iterator].values[step] = 0;}
                         temptrendOne = <number>dataView.categorical.values[iterator].values[step];
-                        tooltipPoint.push({
-                            displayName: col.displayName,
-                            value: this.getFormattedTooltipData(col.format, temptrendOne)
-                        });
+                        tooltipPoint.push({ displayName: col.displayName, value: this.getFormattedTooltipData(col.format, temptrendOne)});
                     } else if (col.roles[`QualitativeState2Value`]) {
+                        if (dataView.categorical.values[iterator].values[step] === null) { dataView.categorical.values[iterator].values[step] = 0; }
                         temptrendtwo = <number>dataView.categorical.values[iterator].values[step];
-                        tooltipPoint.push({
-                            displayName: col.displayName,
-                            value: this.getFormattedTooltipData(col.format, temptrendtwo)
-                        });
+                        tooltipPoint.push({ displayName: col.displayName, value: this.getFormattedTooltipData(col.format, temptrendtwo)});
                     } else if (col.roles[`BestValue`]) {
+                        if (dataView.categorical.values[iterator].values[step] === null) { dataView.categorical.values[iterator].values[step] = 0; }
                         tempBest = <number>dataView.categorical.values[iterator].values[step];
-                        tooltipPoint.push({
-                            displayName: col.displayName,
-                            value: this.getFormattedTooltipData(col.format, tempBest)
-                        });
+                        tooltipPoint.push({ displayName: col.displayName, value: this.getFormattedTooltipData(col.format, tempBest)});
                     }
                 }
-                // datapoint to be pushed
-                let dataPoint: ILinearDataPoint;
-                dataPoint = {
-                    key: tempKey,
-                    targetValue: tempTarget,
-                    actualValue: tempActual,
-                    minValue: tempMin,
-                    maxValue: tempMax,
-                    trendOne: temptrendOne,
-                    trendTwo: temptrendtwo,
+                let dataPoint: ILinearDataPoint={
                     BestValue: tempBest,
+                    actualValue: tempActual,
+                    key: tempKey,
+                    maxValue: tempMax,
+                    minValue: tempMin,
                     selectionId: categoryFlag === 1 ? staticHost.createSelectionIdBuilder()
                         .withCategory(dataView.categorical.categories[0], step)
-                        .createSelectionId() : null
+                        .createSelectionId() : null,
+                    targetValue: tempTarget,
+                    trendOne: temptrendOne,
+                    trendTwo: temptrendtwo,
                 };
-                if (selectedArray.length && (selectedArray[0][`key`] === dataPoint.selectionId[`key`])) {
-                    clearFlag = false;
-                }
+                if (selectedArray.length && (selectedArray[0][`key`] === dataPoint.selectionId[`key`])) { clearFlag = false;}
                 if (this.roscCallFlag) {
                     if ((selectedArray.length) && (selectedArray[0][`key`] === dataPoint.selectionId[`key`])) {
                         tempSelectionId = dataPoint.selectionId;
@@ -404,7 +320,8 @@ module powerbi.extensibility.visual {
                     }
                 }
                 linearDataPoint.push(dataPoint);
-                if (tempSelectionId !== null && prevFlag === options.dataViews[0].categorical.categories[0].values.length) {
+                if (tempSelectionId !== null && prevFlag ===
+                    options.dataViews[0].categorical.categories[0].values.length) {
                     if (linearDataPoint[step].selectionId[`key`] === tempSelectionId[`key`]) {
                         tooltip.push({
                             tooltipDataPoint: tooltipPoint
@@ -416,65 +333,67 @@ module powerbi.extensibility.visual {
                         tooltipDataPoint: tooltipPoint
                     });
                 }
+
             }
-            if (clearFlag) {
-                tempSelectionId = null;
-            } else {
-                if (selectedArray.length) {
-                    tempSelectionId = selectedArray[0];
-                }
-            }
+
+        }
+        public converter(dataView: DataView, options: VisualUpdateOptions): ILinearGauge {
+            let $this: this = this;
+            let clearFlag: boolean = true;
+            tooltipFLag = 0;
+            let data: ILinearGauge = LinearGauge.GETDEFAULTDATA();
+            linearDataPoint = [];
+            $this.getSettings(this.dataView.metadata.objects);
+            dataPoints = [];
+            if (!dataView || !dataView.categorical || dataView.categorical.values === undefined) { return;}
+            let actualFlag: boolean = false;
+            let values: DataViewValueColumns = dataView.categorical.values;
+            if (dataView.categorical.categories) { categoryFlag = 1;}
+             else {     categoryFlag = 0; }
+            tooltip = [];
+            const selectedArray: powerbi.extensibility.ISelectionId[] = $this.selectionManager.getSelectionIds();
+            if (dataView.categorical.values[0].values.length === 0 && dataView.categorical.categories[0].values.length === 0) {
+                this.nullValueError(); }
+            this.getDataViewValue(dataView, options);
+            if (clearFlag) { tempSelectionId = null;} 
+            else { if (selectedArray.length) {  tempSelectionId = selectedArray[0];}}
             if (categoryFlag === 1) {
-                let categoryCol: string;
-                categoryCol = dataView.categorical.categories[0].source.displayName;
-                let length: number;
-                length = linearDataPoint.length;
+                let categoryCol: string = dataView.categorical.categories[0].source.displayName;
+                let length: number = linearDataPoint.length;
                 for (let index: number = 0; index < length; index++) {
-                    let category: PrimitiveValue;
-                    category = linearDataPoint[index].key;
+                    let category: PrimitiveValue = linearDataPoint[index].key;
                     categoryLegend.push({
+                        color: getCategoricalObjectValue<Fill>(dataView.categorical.categories[0], index, `colors`, "fillColor", {
+                                solid: { color: staticHost.colorPalette.getColor(<string>dataView.categorical.categories[0].values[index]).value}}).solid.color,
                         key: category.toString(),
-                        color: getCategoricalObjectValue<Fill>(dataView.categorical.categories[0],
-                                                               index, `colors`, 'fillColor', {
-                                solid: {
-                                    color: staticHost.colorPalette.getColor(<string>dataView.categorical.categories[0].values[index])
-                                        .value
-                                }
-                            }).solid.color,
-                        selectionId: staticHost.createSelectionIdBuilder()
-                            .withCategory(dataView.categorical.categories[0], index)
-                            .createSelectionId()
+                        selectionId: staticHost.createSelectionIdBuilder().withCategory(dataView.categorical.categories[0], index).createSelectionId()
                     });
-                    dataPoints.push({
-                        flag: index + 1,
-                        key: category.toString(),
+                    dataPoints.push({ flag: index + 1, key: category.toString(),
                         selector: staticHost.createSelectionIdBuilder()
                             .withCategory(dataView.categorical.categories[0], index)
                             .createSelectionId()
                     });
                 }
-                uniqueValuesLegend = dataView.categorical.categories[0].values
-                    .filter(function (e: PrimitiveValue, i: number, arr: PrimitiveValue[]): boolean {
+                uniqueValuesLegend = dataView.categorical.categories[0].values.filter((e: PrimitiveValue, i: number, arr: PrimitiveValue[]): boolean => {
                         return arr.lastIndexOf(e) === i;
                     });
                 categoryFlag = 1;
                 legendData = {
-                    title: $this.settings.categoryTitle ? dataView.categorical.categories[0].source.displayName ?
-                        categoryCol : 'NULL' : '',
                     dataPoints: [],
+                    fontSize: $this.settings.categoryFontSize,
                     labelColor: $this.settings.legendTextColor,
-                    fontSize: $this.settings.categoryFontSize
+                    title: $this.settings.categoryTitle ? dataView.categorical.categories[0].source.displayName ?
+                        categoryCol : "NULL" : ""
                 };
                 const cache: number = 20;
                 options.viewport.width = options.viewport.width - cache;
                 for (let index: number = 0; index < uniqueValuesLegend.length; index++) {
                     legendData.dataPoints.push({
-                        label: linearDataPoint[index].key,
-                        color: staticHost.colorPalette.getColor(<string>dataView.categorical.categories[0].values[index])
-                            .value, //color of the icon
+                        color: staticHost.colorPalette.getColor(<string>dataView.categorical.categories[0].values[index]).value,
                         icon: powerbi.extensibility.utils.chart.legend.LegendIcon.Box,
-                        selected: false,
-                        identity: linearDataPoint[index].selectionId
+                        identity: linearDataPoint[index].selectionId,
+                        label: linearDataPoint[index].key,
+                        selected: false
                     });
                 }
                 for (let index: number = 0; index < categoryLegend.length; index++) {
@@ -482,19 +401,19 @@ module powerbi.extensibility.visual {
                         legendData.dataPoints[index].color = categoryLegend[index].color;
                     }
                 }
-                if (this.settings.legendPos === 'Top') {
+                if (this.settings.legendPos === "Top") {
                     this.legend.changeOrientation(LegendPosition.Top);
-                } else if (this.settings.legendPos === 'Top center') {
+                } else if (this.settings.legendPos === "Top center") {
                     this.legend.changeOrientation(LegendPosition.TopCenter);
-                } else if (this.settings.legendPos === 'Bottom') {
+                } else if (this.settings.legendPos === "Bottom") {
                     this.legend.changeOrientation(LegendPosition.Bottom);
-                } else if (this.settings.legendPos === 'Bottom center') {
+                } else if (this.settings.legendPos === "Bottom center") {
                     this.legend.changeOrientation(LegendPosition.BottomCenter);
-                } else if (this.settings.legendPos === 'Left center') {
+                } else if (this.settings.legendPos === "Left center") {
                     this.legend.changeOrientation(LegendPosition.LeftCenter);
-                } else if (this.settings.legendPos === 'Right') {
+                } else if (this.settings.legendPos === "Right") {
                     this.legend.changeOrientation(LegendPosition.Right);
-                } else if (this.settings.legendPos === 'Right center') {
+                } else if (this.settings.legendPos === "Right center") {
                     this.legend.changeOrientation(LegendPosition.RightCenter);
                 } else {
                     this.legend.changeOrientation(LegendPosition.Left);
@@ -505,23 +424,20 @@ module powerbi.extensibility.visual {
             }
             actualValue = [];
             for (let i: number = 0; i < values.length; i++) {
-                let col: DataViewMetadataColumn;
-                col = dataView.categorical.values[i].source;
-                let value: number;
-                value = null;
+                let col: DataViewMetadataColumn = dataView.categorical.values[i].source;
+                let value: number = null;
                 let pos: number = 0;
-                if (col.roles[`Y`]) { // we are matching the role and populating value
+                if (col.roles[`Y`]) {
                     data.actualFormat = col.format;
                     for (let j: number = 0; j < linearDataPoint.length; j++) {
                         if (tempSelectionId !== null && linearDataPoint[j].selectionId[`key`] === tempSelectionId[`key`]) {
-                            value = value + <number>linearDataPoint[j].actualValue;
+                            value = <number>value + linearDataPoint[j].actualValue;
                             selectedKey = linearDataPoint[j].key;
-                            if (individualFlag === 0) {
-                                actualValue[pos] = value;
-                                pos++;
+                            if (individualFlag === 0) { actualValue[pos] = value;
+                            pos++;
                             }
                         } else if (tempSelectionId === null) {
-                            value = value + <number>linearDataPoint[j].actualValue;
+                            value = <number>value + linearDataPoint[j].actualValue;
                             if (individualFlag === 0) {
                                 actualValue[j] = value;
                             }
@@ -535,11 +451,12 @@ module powerbi.extensibility.visual {
                 if (col.roles[`MinValue`]) {
                     data.minFlag = true;
                     value = <number>values[i].values[0];
-                    for (let j: number = 0; j < linearDataPoint.length; j++) {
-                        if (tempSelectionId !== null && linearDataPoint[j].selectionId[`key`] === tempSelectionId[`key`]) {
-                            value = <number>linearDataPoint[j].minValue;
-                        } else if (tempSelectionId === null && value > <number>linearDataPoint[j].minValue) {
-                            value = <number>linearDataPoint[j].minValue;
+                    for (const j of linearDataPoint) {
+                        const linearValue: number = <number>j.minValue;
+                        if (tempSelectionId !== null && j.selectionId[`key`] === tempSelectionId[`key`]) {
+                            value = <number>j.minValue;
+                        } else if (tempSelectionId === null && value > linearValue) {
+                            value = <number>j.minValue;
                         }
                     }
                     data.min = value;
@@ -549,11 +466,11 @@ module powerbi.extensibility.visual {
                 if (col.roles[`MaxValue`]) {
                     data.maxFlag = true;
                     value = null;
-                    for (let j: number = 0; j < linearDataPoint.length; j++) {
-                        if (tempSelectionId !== null && linearDataPoint[j].selectionId[`key`] === tempSelectionId[`key`]) {
-                            value = <number>linearDataPoint[j].maxValue;
+                    for (const j of linearDataPoint) {
+                        if (tempSelectionId !== null && j.selectionId[`key`] === tempSelectionId[`key`]) {
+                            value = <number>j.maxValue;
                         } else if (tempSelectionId === null) {
-                            value = value + <number>linearDataPoint[j].maxValue;
+                            value = <number>value + j.maxValue;
                         }
                     }
                     data.max = value;
@@ -564,12 +481,9 @@ module powerbi.extensibility.visual {
                     data.targetSet = true;
                     data.targetFormat = col.format;
                     value = null;
-                    for (let j: number = 0; j < linearDataPoint.length; j++) {
-                        if (tempSelectionId !== null && linearDataPoint[j].selectionId[`key`] === tempSelectionId[`key`]) {
-                            value = <number>linearDataPoint[j].targetValue;
-                        } else if (tempSelectionId === null) {
-                            value = value + <number>linearDataPoint[j].targetValue;
-                        }
+                    for (const j of linearDataPoint) {
+                        if (tempSelectionId !== null && j.selectionId[`key`] === tempSelectionId[`key`]) { value = <number>j.targetValue;}
+                         else if (tempSelectionId === null) { value = <number>value + j.targetValue;}
                     }
                     data.target = value;
                     data.targetExists = true;
@@ -577,11 +491,11 @@ module powerbi.extensibility.visual {
                 }
                 if (col.roles[`QualitativeState1Value`]) {
                     value = null;
-                    for (let j: number = 0; j < linearDataPoint.length; j++) {
-                        if (tempSelectionId !== null && linearDataPoint[j].selectionId[`key`] === tempSelectionId[`key`]) {
-                            value = <number>linearDataPoint[j].trendOne;
+                    for (const j of linearDataPoint) {
+                        if (tempSelectionId !== null && j.selectionId[`key`] === tempSelectionId[`key`]) {
+                            value = <number>j.trendOne;
                         } else if (tempSelectionId === null) {
-                            value = value + <number>linearDataPoint[j].trendOne;
+                            value = <number>value + j.trendOne;
                         }
                     }
                     data.trendValueOne = value;
@@ -591,11 +505,11 @@ module powerbi.extensibility.visual {
                 }
                 if (col.roles[`QualitativeState2Value`]) {
                     value = null;
-                    for (let j: number = 0; j < linearDataPoint.length; j++) {
-                        if (tempSelectionId !== null && linearDataPoint[j].selectionId[`key`] === tempSelectionId[`key`]) {
-                            value = <number>linearDataPoint[j].trendTwo;
+                    for (const j of linearDataPoint) {
+                        if (tempSelectionId !== null && j.selectionId[`key`] === tempSelectionId[`key`]) {
+                            value = <number>j.trendTwo;
                         } else if (tempSelectionId === null) {
-                            value = value + <number>linearDataPoint[j].trendTwo;
+                            value = <number>value + j.trendTwo;
                         }
                     }
                     data.trendValueTwo = value;
@@ -605,11 +519,11 @@ module powerbi.extensibility.visual {
                 }
                 if (col.roles[`BestValue`]) {
                     value = null;
-                    for (let j: number = 0; j < linearDataPoint.length; j++) {
-                        if (tempSelectionId !== null && linearDataPoint[j].selectionId[`key`] === tempSelectionId[`key`]) {
-                            value = <number>linearDataPoint[j].BestValue;
+                    for (const j of linearDataPoint) {
+                        if (tempSelectionId !== null && j.selectionId[`key`] === tempSelectionId[`key`]) {
+                            value = <number>j.BestValue;
                         } else if (tempSelectionId === null) {
-                            value = value + <number>linearDataPoint[j].BestValue;
+                            value = <number>value + j.BestValue;
                         }
                     }
                     data.best = value;
@@ -619,76 +533,74 @@ module powerbi.extensibility.visual {
                 }
             }
             if (categoryFlag === 1) {
-                d3.selectAll('.measure').data(legendData.dataPoints);
-                d3.selectAll('.legendItem')
-                    // tslint:disable-next-line:no-any
-                    .on('click', function (d: any, i: number): void {
-                        if (d3.select(this).classed('selected')) {
+                let legendItem_selectAll = d3.selectAll(".legendItem");
+                d3.selectAll(".measure").data(legendData.dataPoints);
+                legendItem_selectAll
+                    .on("click", function (d: any, i: number): void {
+                        if (d3.select(this).classed("selected")) {
                             $this.selectionManager.clear();
                             if (tempSelectionId !== null) {
                                 tempSelectionId = null;
                                 $this.roscCallFlag = false;
                                 $this.update(options);
                             }
-                            d3.selectAll('.legendItem').classed('selected', false);
-                            d3.selectAll('.legendItem').style('opacity', 1);
-                        }  else {
+                            legendItem_selectAll.classed("selected", false);
+                            legendItem_selectAll.style("opacity", 1);
+                        } else {
                             $this.selectionManager.select(d.identity).then((ids: ISelectionId[]) => {
                                 tempSelectionId = d.identity;
                                 $this.roscCallFlag = false;
                                 $this.update(options);
-                                d3.select(this).classed('selected', true);
-                                d3.selectAll('.legendItem').style('opacity', 0.5);
-                                d3.select(this).style('opacity', 1);
-                             });
+                                d3.select(this).classed("selected", true);
+                                legendItem_selectAll.style("opacity", 0.5);
+                                d3.select(this).style("opacity", 1);
+                            });
                         }
                         (<Event>d3.event).stopPropagation();
                     });
-                $('.navArrow').click(function (): void {
-                    d3.selectAll('.legendItem').style('cursor', 'pointer');
-                    // tslint:disable-next-line:no-any
-                    d3.selectAll('.legendItem').on('click', function (d: any, i: number): void {
-                        if (d3.select(this).classed('selected')) {
+                $(".navArrow").click((): void => {
+                    legendItem_selectAll.style("cursor", "pointer");
+                    legendItem_selectAll.on("click", function (d: any, i: number): void {
+                        if (d3.select(this).classed("selected")) {
                             $this.selectionManager.clear();
                             if (tempSelectionId !== null) {
                                 tempSelectionId = null;
                                 $this.roscCallFlag = false;
                                 $this.update(options);
                             }
-                            d3.selectAll('.legendItem').classed('selected', false);
-                            d3.selectAll('.legendItem').style('opacity', 1);
-                        }  else {
-                        $this.selectionManager.select(d.identity).then((ids: ISelectionId[]) => {
-                            tempSelectionId = d.identity;
-                            $this.roscCallFlag = false;
-                            $this.update(options);
-                            d3.select(this).classed('selected', true);
-                            d3.selectAll('.legendItem').style('opacity', 0.5);
-                            d3.select(this).style('opacity', 1);
-                        });
-                    }
+                            legendItem_selectAll.classed("selected", false);
+                            legendItem_selectAll.style("opacity", 1);
+                        } else {
+                            $this.selectionManager.select(d.identity).then((ids: ISelectionId[]) => {
+                                tempSelectionId = d.identity;
+                                $this.roscCallFlag = false;
+                                $this.update(options);
+                                d3.select(this).classed("selected", true);
+                                legendItem_selectAll.style("opacity", 0.5);
+                                d3.select(this).style("opacity", 1);
+                            });
+                        }
                         (<Event>d3.event).stopPropagation();
                     });
                 });
-                d3.select('html').on('click', function (): void {
+                d3.select("html").on("click", (): void => {
                     $this.selectionManager.clear();
                     if (tempSelectionId !== null) {
                         tempSelectionId = null;
                         $this.roscCallFlag = false;
                         $this.update(options);
-                        d3.selectAll('.legendItem').style('opacity', 1);
+                        legendItem_selectAll.style("opacity", 1);
                     }
                 });
             }
-            if (this.settings.Orientation === 'Vertical' && (this.settings.legendPos === 'Bottom' ||
-                this.settings.legendPos === 'Bottom center')) {
-                d3.select('svg.legend').style('bottom', '0px');
+            if (this.settings.Orientation === "Vertical" && (this.settings.legendPos === "Bottom" ||
+                this.settings.legendPos === "Bottom center")) {
+                d3.select("svg.legend").style("bottom", "0px");
             }
-            if (this.settings.Orientation === 'Vertical' && (this.settings.legendPos === 'Top' ||
-                this.settings.legendPos === 'Top center')) {
-                d3.select('svg.legend').style('top', '0px');
+            if (this.settings.Orientation === "Vertical" && (this.settings.legendPos === "Top" ||
+                this.settings.legendPos === "Top center")) {
+                d3.select("svg.legend").style("top", "0px");
             }
-            // If max is not present or max precedes actual value
             if ((!data.maxFlag && actualFlag) || data.max < data.actual) {
                 if (data.actual > 0) {
                     data.max = data.actual * 2;
@@ -696,7 +608,6 @@ module powerbi.extensibility.visual {
                     data.max = data.actual / 2;
                 }
             }
-            // If min is not present or min exceeds actual value
             if ((!data.minFlag && actualFlag) || data.min > data.actual) {
                 if (data.actual > 0) {
                     data.min = data.actual / 2;
@@ -704,21 +615,18 @@ module powerbi.extensibility.visual {
                     data.min = data.actual * 2;
                 }
             }
-            // if target value precedes min or exceeds max
             if (data.targetExists && data.target < data.min && !data.minFlag && actualFlag) {
                 data.min = data.target;
             }
             if (data.targetExists && data.target > data.max && !data.maxFlag && actualFlag) {
                 data.max = data.target;
             }
-            // if best value precedes min or exceeds max
             if (data.bestSet && data.best < data.min && !data.minFlag && actualFlag) {
                 data.min = data.best;
             }
             if (data.bestSet && data.best > data.max && !data.maxFlag && actualFlag) {
                 data.max = data.best;
             }
-            // If min is the same as max or exceeds max
             if (data.min >= data.max) {
                 if (data.actual > 0) {
                     data.min = data.actual / 2;
@@ -729,57 +637,26 @@ module powerbi.extensibility.visual {
                 }
             }
 
-            return data; //Data object we are returning here to the update function
+            return data;
         }
+        public nullValueError() {
+            const message: string = " Actual value shouldn't be null or 0 ";
+            this.rootElement
+                .append("div")
+                .classed("lg_ErrorMessage", true)
+                .text(message)
+                .attr("title", message);
 
-        private getFormattedData(value: number, displayUnits: number, precision: number, format: string): string {
-
-            let formattedData: string;
-            let formatterVal: number = displayUnits;
-
-            if (value === null) {
-                value = 0;
-            }
-
-            if (displayUnits === 0) {
-                let alternateFormatter: number;
-                alternateFormatter = parseInt(value.toString(), 10).toString().length;
-                if (alternateFormatter > 9) {
-                    formatterVal = 1e9;
-                } else if (alternateFormatter <= 9 && alternateFormatter > 6) {
-                    formatterVal = 1e6;
-                } else if (alternateFormatter <= 6 && alternateFormatter >= 4) {
-                    formatterVal = 1e3;
-                } else {
-                    formatterVal = 10;
-                }
-            }
-            if (!format) {
-                format = ValueFormatter.DefaultNumericFormat;
-            }
-            precision = precision === null ? 0 : precision;
-            let formatter: IValueFormatter;
-            formatter = ValueFormatter.create({
-                value: formatterVal,
-                precision: precision,
-                format: format,
-                cultureSelector: this.host.locale
-            });
-            formattedData = formatter.format(value);
-
-            return formattedData;
+            return;
         }
-
         public getDarkShade(colorHEX: string, opacity: number): string {
-            colorHEX = String(colorHEX).replace(/[^0-9a-f]/gi, '');
+            colorHEX = String(colorHEX).replace(/[^0-9a-f]/gi, "");
             if (colorHEX.length < 6) {
                 colorHEX = colorHEX[0] + colorHEX[0] + colorHEX[1] + colorHEX[1] + colorHEX[2] + colorHEX[2];
             }
             opacity = opacity || 0;
 
-            let rgb: string;
-            rgb = '#';
-            // tslint:disable-next-line:no-any
+            let rgb: string = "#";
             let c: any;
             for (let iCounter: number = 0; iCounter < 3; iCounter++) {
                 c = parseInt(colorHEX.substr(iCounter * 2, 2), 16);
@@ -790,36 +667,7 @@ module powerbi.extensibility.visual {
             return rgb;
         }
 
-        private getFormattedTooltipData(format: string, value: number): string {
-            let formattedData: string;
-            let formatter: IValueFormatter;
-            if (format === '' || format === undefined ) {
-                format = ValueFormatter.DefaultNumericFormat;
-            }
-            formatter = ValueFormatter.create({
-                format: format,
-                cultureSelector: this.host.locale
-            });
-            formattedData = formatter.format(value);
-            if (format !== undefined) {
-                if (format.indexOf('.') > 0) {
-                    if (formattedData.split('.')[1].length > 2) {
-                        let dataFormatter: IValueFormatter;
-                        dataFormatter = ValueFormatter.create({
-                            format: format,
-                            value : 0
-                        });
-                        formattedData = dataFormatter.format(value);
-                    }
-                }
-            }
-
-            return formattedData;
-        }
-
-        // tslint:disable-next-line:cyclomatic-complexity
         public getSettings(objects: DataViewObjects): void {
-
             this.colorsGlobal = [];
             if ((JSON.stringify(objects) !== JSON.stringify(this.prevDataViewObjects))) {
                 const colorPalette: IColorPalette = this.host.colorPalette;
@@ -836,182 +684,81 @@ module powerbi.extensibility.visual {
                 let trendDecimal: number = getValue<number>(objects, `trendLabels`, `lineWidth`, null);
                 let scaleDecimalPlaces: number = getValue<number>(objects, `ScaleSettings`, `decimalPlaces`, null);
                 let legendDecimalPlaces: number = getValue<number>(objects, `legendSettings`, `decimalPlaces`, null);
-                dataDecimal = dataDecimal === null ? null : dataDecimal <= 0
-                    ? null : (dataDecimal <= 4) ? dataDecimal : 4;
-                trendDecimal = trendDecimal === null ? null : trendDecimal <= 0
-                    ? null : (trendDecimal <= 4) ? trendDecimal : 4;
-                scaleDecimalPlaces = scaleDecimalPlaces === null ? null : scaleDecimalPlaces <= 0
-                    ? null : (scaleDecimalPlaces <= 4) ? scaleDecimalPlaces : 4;
-                legendDecimalPlaces = legendDecimalPlaces === null ? null : legendDecimalPlaces <= 0
-                    ? null : (legendDecimalPlaces <= 4) ? legendDecimalPlaces : 4;
+                this.actualdecimalplaces = getValue<number>(objects, `labels`, `markerWidth`, null);
+                dataDecimal = dataDecimal === null ? null : dataDecimal <= 0 ? null : (dataDecimal <= 4) ? dataDecimal : 4;
+                trendDecimal = trendDecimal === null ? null : trendDecimal <= 0 ? null : (trendDecimal <= 4) ? trendDecimal : 4;
+                scaleDecimalPlaces = scaleDecimalPlaces === null ? null : scaleDecimalPlaces <= 0 ? null : (scaleDecimalPlaces <= 4) ? scaleDecimalPlaces : 4;
+                legendDecimalPlaces = legendDecimalPlaces === null ? null : legendDecimalPlaces <= 0 ? null : (legendDecimalPlaces <= 4) ? legendDecimalPlaces : 4;
                 this.settings = {
-                    ComparisonFillColor: getValue<Fill>(objects, `general`, `ComparisonFillColor`, {
-                        solid: {
-                            color: '#E0E0E0'
-                        }
-                    }).solid.color,
-                    ActualFillColor: getValue<Fill>(objects, `general`, `ActualFillColor`, {
-                        solid: {
-                            color: `#FF8F00`
-                        }
-                    }).solid.color,
-                    ActualFillColorEqual: getValue<Fill>(objects, `general`, `ActualFillColorEqual`, {
-                        solid: {
-                            color: `#FD817E`
-                        }
-                    }).solid.color,
-                    ActualFillColorGreater: getValue<Fill>(objects, `general`, `ActualFillColorGreater`, {
-                        solid: {
-                            color: `#8AD4EB`
-                        }
-                    }).solid.color,
-                    DataColor: getValue<Fill>(objects, `labels`, `DataColor`, {
-                        solid: {
-                            color: '#000'
-                        }
-                    }).solid.color,
-                    showlabel: getValue<number>(objects, `labels`, `show`, 0) === 0 ? true : getValue<number>(objects, `labels`, `show`, 0),
-                    fontSize: getValue<number>(objects, `labels`, `fontSize`, 0) <= 0 ? 25 :
-                        getValue<number>(objects, `labels`, `fontSize`, 0),
-                    fontFamily: getValue<number>(objects, `labels`, `fontFamily`, 0) <= 0 ? `Segoe UI` :
-                        getValue<number>(objects, `labels`, `fontFamily`, 0),
-                    labelDisplayUnits: getValue<number>(objects, `labels`, `labelDisplayUnits`, 0),
-                    markerWidth: dataDecimal,
-                    trendColor: getValue<Fill>(objects, `trendLabels`, `trendColor`, {
-                        solid: {
-                            color: '#000'
-                        }
-                    }).solid.color,
-                    showTrend: getValue<number>(objects, `trendLabels`, `show`, 0) === 0 ? true :
-                        getValue<number>(objects, `trendLabels`, `show`, 0),
-                    trendfontSize: getValue<number>(objects, `trendLabels`, `fontSize`, 0) <= 0 ? 15 :
-                        getValue<number>(objects, `trendLabels`, `fontSize`, 0),
-                    trendfontFamily: getValue<number>(objects, `trendLabels`, `fontFamily`, 0) <= 0 ? `Segoe UI` :
-                        getValue<number>(objects, `trendLabels`, `fontFamily`, 0),
-                    trendDisplayUnits: getValue<number>(objects, `trendLabels`, `trendDisplayUnits`, 0),
-                    lineWidth: trendDecimal,
-                    showPercentage: getValue<number>(objects, `PercentageDatalabels`, `show`, 0) === 0 ? true :
-                        getValue<number>(objects, `PercentageDatalabels`, `show`, 0),
-                    showRemainingPercentage: getValue<boolean>(objects, `PercentageDatalabels`, `showRemaining`, false),
-                    title: getValue<boolean>(objects, `general`, `title`, false),
-
-                    PercentageDataColor: getValue<Fill>(objects, `PercentageDatalabels`, `PercentageDataColor`, {
-                        solid: {
-                            color: '#000'
-                        }
-                    }).solid.color,
-                    percentagefontSize: getValue<number>(objects, `PercentageDatalabels`, `fontSize`, 0) <= 0 ? 15 :
-                        getValue<number>(objects, `PercentageDatalabels`, `fontSize`, 0),
-                    percentagefontFamily: getValue<number>(objects, `PercentageDatalabels`, `fontFamily`, 0) <= 0 ? `Segoe UI` :
-                        getValue<number>(objects, `PercentageDatalabels`, `fontFamily`, 0),
-                    Orientation: getValue<number>(objects, `ChartOrientation`, `Orientation`, 0) <= 0 ? `Horizontal` :
-                        getValue<number>(objects, `ChartOrientation`, `Orientation`, 0),
-                    showColor: getValue<number>(objects, `colorSelector`, `show`, 0) <= 0 ? false :
-                        getValue<number>(objects, `colorSelector`, `show`, 0),
+                    ActualFillColor: getValue<Fill>(objects, `general`, `ActualFillColor`, { solid: { color: `#FF8F00` } }).solid.color,
+                    ActualFillColorEqual: getValue<Fill>(objects, `general`, `ActualFillColorEqual`, { solid: { color: `#FD817E` } }).solid.color,
+                    ActualFillColorGreater: getValue<Fill>(objects, `general`, `ActualFillColorGreater`, { solid: { color: `#8AD4EB` } }).solid.color,
+                    ComparisonFillColor: getValue<Fill>(objects, `general`, `ComparisonFillColor`, { solid: { color: "#E0E0E0" } }).solid.color,
+                    DataColor: getValue<Fill>(objects, `labels`, `DataColor`, { solid: { color: "#000" } }).solid.color,
+                    Indicator1: getValue<Fill>(objects, `Indicator`, `Indicator1`, { solid: { color: "grey" } }).solid.color,
+                    Indicator2: getValue<Fill>(objects, `Indicator`, `Indicator2`, { solid: { color: "grey" } }).solid.color,
+                    MaxRangeValue: maxValue, MinRangeValue: minValue,
+                    Orientation: getValue<number>(objects, `ChartOrientation`, `Orientation`, 0) <= 0 ? `Horizontal` : getValue<number>(objects, `ChartOrientation`, `Orientation`, 0),
+                    PercentageDataColor: getValue<Fill>(objects, `PercentageDatalabels`, `PercentageDataColor`, { solid: { color: "#000" } }).solid.color,
+                    RangeTicksColor: getValue<Fill>(objects, `TargetRange`, `RangeTicksColor`, { solid: { color: "#FD625E" } }).solid.color,
+                    Zone1: getValue<Fill>(objects, `colorSelector`, `Zone1`, { solid: { color: "#01B8AA" } }).solid.color,
+                    Zone2: getValue<Fill>(objects, `colorSelector`, `Zone2`, { solid: { color: "#0051FF" } }).solid.color,
+                    Zone3: getValue<Fill>(objects, `colorSelector`, `Zone3`, { solid: { color: "#7FBA00" } }).solid.color,
+                    Zone4: getValue<Fill>(objects, `colorSelector`, `Zone4`, { solid: { color: "#F9B700" } }).solid.color,
+                    animationTime: getValue<number>(objects, `animationEffect`, `animationTime`, 3),
+                    animationToggle: getValue<boolean>(objects, `animationEffect`, `show`, false),
+                    area1: getValue<Fill>(objects, `colorSelector`, `area1`, { solid: { color: "#01B8AA" } }).solid.color,
+                    area2: getValue<Fill>(objects, `colorSelector`, `area2`, { solid: { color: "#0051FF" } }).solid.color,
+                    area3: getValue<Fill>(objects, `colorSelector`, `area3`, { solid: { color: "#7FBA00" } }).solid.color,
+                    categoryFontSize: getValue<number>(objects, `categorySettings`, `fontSize`, 12),
+                    categoryTitle: getValue<boolean>(objects, `categorySettings`, `title`, false),
                     fillOption: getValue<string>(objects, `colorSelector`, `fillOption`, `value`),
-                    Zone1: getValue<Fill>(objects, `colorSelector`, `Zone1`, {
-                        solid: {
-                            color: '#01B8AA'
-                        }
-                    }).solid.color,
-                    Zone2: getValue<Fill>(objects, `colorSelector`, `Zone2`, {
-                        solid: {
-                            color: '#0051FF'
-                        }
-                    }).solid.color,
-                    Zone3: getValue<Fill>(objects, `colorSelector`, `Zone3`, {
-                        solid: {
-                            color: '#7FBA00'
-                        }
-                    }).solid.color,
-                    Zone4: getValue<Fill>(objects, `colorSelector`, `Zone4`, {
-                        solid: {
-                            color: '#F9B700'
-                        }
-                    }).solid.color,
-                    area1: getValue<Fill>(objects, `colorSelector`, `area1`, {
-                        solid: {
-                            color: '#01B8AA'
-                        }
-                    }).solid.color,
-                    area2: getValue<Fill>(objects, `colorSelector`, `area2`, {
-                        solid: {
-                            color: '#0051FF'
-                        }
-                    }).solid.color,
-                    area3: getValue<Fill>(objects, `colorSelector`, `area3`, {
-                        solid: {
-                            color: '#7FBA00'
-                        }
-                    }).solid.color,
+                    fontFamily: getValue<number>(objects, `labels`, `fontFamily`, 0) <= 0 ? `Segoe UI` : getValue<number>(objects, `labels`, `fontFamily`, 0),
+                    fontSize: getValue<number>(objects, `labels`, `fontSize`, 0) <= 0 ? 25 : getValue<number>(objects, `labels`, `fontSize`, 0),
+                    labelDisplayUnits: getValue<number>(objects, `labels`, `labelDisplayUnits`, 0),
+                    legendColor: getValue<Fill>(objects, `legendSettings`, `fill`, { solid: { color: "#000" } }).solid.color,
+                    legendDecimalPlaces, legendDisplayUnits: getValue<number>(objects, `legendSettings`, `displayUnits`, 0),
+                    legendFontFamily: getValue<string>(objects, `legendSettings`, `fontFamily`, "Segoe UI"),
+                    legendFontSize: getValue<number>(objects, `legendSettings`, `fontSize`, 15),
+                    legendNewPosition: getValue<string>(objects, `legendSettings`, `position`, "topLeft"),
+                    legendPos: getValue<string>(objects, "categorySettings", "position", "Bottom center"),
+                    legendShow: getValue<boolean>(objects, `legendSettings`, `show`, true),
+                    legendTextColor: getValue<Fill>(objects, `categorySettings`, `color`, { solid: { color: "black" } }).solid.color,
+                    lineWidth: trendDecimal,
+                    markerWidth: dataDecimal,
+                    percentageVal1: Number(percentageVal1),
+                    percentageVal2: Number(percentageVal2),
+                    percentageVal3: Number(percentageVal3),
+                    percentagefontFamily: getValue<number>(objects, `PercentageDatalabels`, `fontFamily`, 0) <= 0 ? `Segoe UI` : getValue<number>(objects, `PercentageDatalabels`, `fontFamily`, 0),
+                    percentagefontSize: getValue<number>(objects, `PercentageDatalabels`, `fontSize`, 0) <= 0 ? 15 : getValue<number>(objects, `PercentageDatalabels`, `fontSize`, 0),
                     range1: range1Val,
                     range2: range2Val,
                     range3: range3Val,
                     range4: range4Val,
-                    percentageVal1: Number(percentageVal1),
-                    percentageVal2: Number(percentageVal2),
-                    percentageVal3: Number(percentageVal3),
-                    showScale: getValue<number>(objects, `ScaleSettings`, `show`, 0) === 0 ? true :
-                        getValue<number>(objects, `ScaleSettings`, `show`, 0),
-                    scaleColor: getValue<Fill>(objects, `ScaleSettings`, `color`, {
-                        solid: {
-                            color: '#000000'
-                        }
-                    }).solid.color,
-                    scaleFontSize: getValue<number>(objects, `ScaleSettings`, `fontSize`, 9),
-                    scaleFontFamily: getValue<string>(objects, `ScaleSettings`, `fontFamily`, 'Segoe UI'),
+                    rangeStyle: getValue<string>(objects, `TargetRange`, `rangeStyle`, "solid"),
+                    rangeWidth: getValue<number>(objects, `TargetRange`, `rangeWidth`, 3) <= 0 ? 1 : getValue<number>(objects, `TargetRange`, `rangeWidth`, 3),
+                    scaleColor: getValue<Fill>(objects, `ScaleSettings`, `color`, { solid: { color: "#000000" } }).solid.color,
+                    scaleDecimalPlaces,
                     scaleDisplayUnits: getValue<number>(objects, `ScaleSettings`, `displayUnits`, 0),
-                    scaleDecimalPlaces: scaleDecimalPlaces,
-                    legendShow: getValue<boolean>(objects, `legendSettings`, `show`, true),
-                    legendNewPosition: getValue<string>(objects, `legendSettings`, `position`, 'topLeft'),
-                    legendColor: getValue<Fill>(objects, `legendSettings`, `fill`, {
-                        solid: {
-                            color: '#000'
-                        }
-                    }).solid.color,
-                    legendFontSize: getValue<number>(objects, `legendSettings`, `fontSize`, 15),
-                    legendFontFamily: getValue<string>(objects, `legendSettings`, `fontFamily`, 'Segoe UI'),
-                    legendDisplayUnits: getValue<number>(objects, `legendSettings`, `displayUnits`, 0),
-                    legendDecimalPlaces: legendDecimalPlaces,
-                    showRange: getValue<number>(objects, `TargetRange`, `show`, 0) <= 0 ? false :
-                        getValue<number>(objects, `TargetRange`, `show`, 0),
-                    MinRangeValue: minValue,
-                    MaxRangeValue: maxValue,
-                    RangeTicksColor: getValue<Fill>(objects, `TargetRange`, `RangeTicksColor`, {
-                        solid: {
-                            color: '#FD625E'
-                        }
-                    }).solid.color,
-                    rangeWidth: getValue<number>(objects, `TargetRange`, `rangeWidth`, 3) <= 0 ? 1 :
-                        getValue<number>(objects, `TargetRange`, `rangeWidth`, 3),
-                    rangeStyle: getValue<string>(objects, `TargetRange`, `rangeStyle`, 'solid'),
-                    Indicator1: getValue<Fill>(objects, `Indicator`, `Indicator1`, {
-                        solid: {
-                            color: 'grey'
-                        }
-                    }).solid.color,
-                    Indicator2: getValue<Fill>(objects, `Indicator`, `Indicator2`, {
-                        solid: {
-                            color: 'grey'
-                         }
-                    }).solid.color,
-                    categoryFontSize: getValue<number>(objects, `categorySettings`, `fontSize`, 12),
-                    categoryTitle: getValue<boolean>(objects, `categorySettings`, `title`, false),
-                    legendPos: getValue<string>(objects, 'categorySettings', 'position', 'Bottom center'),
-                    legendTextColor: getValue<Fill>(objects, `categorySettings`, `color`, {
-                        solid: {
-                            color: 'black'
-                        }
-                    }).solid.color,
-                    animationToggle: getValue<boolean>(objects, `animationEffect`, `show`, false),
-                    animationTime: getValue<number>(objects, `animationEffect`, `animationTime`, 3)
+                    scaleFontFamily: getValue<string>(objects, `ScaleSettings`, `fontFamily`, "Segoe UI"),
+                    scaleFontSize: getValue<number>(objects, `ScaleSettings`, `fontSize`, 9),
+                    showColor: getValue<number>(objects, `colorSelector`, `show`, 0) <= 0 ? false : getValue<number>(objects, `colorSelector`, `show`, 0),
+                    showPercentage: getValue<number>(objects, `PercentageDatalabels`, `show`, 0) === 0 ? true : getValue<number>(objects, `PercentageDatalabels`, `show`, 0),
+                    showRange: getValue<number>(objects, `TargetRange`, `show`, 0) <= 0 ? false : getValue<number>(objects, `TargetRange`, `show`, 0),
+                    showRemainingPercentage: getValue<boolean>(objects, `PercentageDatalabels`, `showRemaining`, false),
+                    showScale: getValue<number>(objects, `ScaleSettings`, `show`, 0) === 0 ? true : getValue<number>(objects, `ScaleSettings`, `show`, 0),
+                    showTrend: getValue<number>(objects, `trendLabels`, `show`, 0) === 0 ? true : getValue<number>(objects, `trendLabels`, `show`, 0),
+                    showlabel: getValue<number>(objects, `labels`, `show`, 0) === 0 ? true : getValue<number>(objects, `labels`, `show`, 0),
+                    title: getValue<boolean>(objects, `general`, `title`, false),
+                    trendColor: getValue<Fill>(objects, `trendLabels`, `trendColor`, { solid: { color: "#000" } }).solid.color,
+                    trendDisplayUnits: getValue<number>(objects, `trendLabels`, `trendDisplayUnits`, 0),
+                    trendfontFamily: getValue<number>(objects, `trendLabels`, `fontFamily`, 0) <= 0 ? `Segoe UI` : getValue<number>(objects, `trendLabels`, `fontFamily`, 0),
+                    trendfontSize: getValue<number>(objects, `trendLabels`, `fontSize`, 0) <= 0 ? 15 : getValue<number>(objects, `trendLabels`, `fontSize`, 0)
                 };
-                if (this.settings.scaleFontSize > 28) {
-                    this.settings.scaleFontSize = 28;
-                }
-                if (this.settings.legendFontSize > 25 ) {
-                    this.settings.legendFontSize = 25;
-                }
+                if (this.settings.scaleFontSize > 28) { this.settings.scaleFontSize = 28; }
+                if (this.settings.legendFontSize > 25) { this.settings.legendFontSize = 25; }
+                if (this.settings.fontSize > 40) { this.settings.fontSize = 40; }
+                if (this.settings.percentagefontSize > 40) { this.settings.percentagefontSize = 40 }
             }
             this.prevDataViewObjects = objects;
             this.colorsGlobal.push(this.settings.ComparisonFillColor);
@@ -1020,7 +767,8 @@ module powerbi.extensibility.visual {
                 this.colorsGlobal.push(this.settings.Zone3);
                 this.colorsGlobal.push(this.settings.Zone2);
                 this.colorsGlobal.push(this.settings.Zone1);
-            } else {
+            }
+            else {
                 this.colorsGlobal.push(this.settings.area3);
                 this.colorsGlobal.push(this.settings.area2);
                 this.colorsGlobal.push(this.settings.area1);
@@ -1029,1835 +777,1700 @@ module powerbi.extensibility.visual {
         public isInteger(x: number): boolean {
             return x % 1 === 0;
         }
-        // tslint:disable-next-line:cyclomatic-complexity
-        public update(options: VisualUpdateOptions): void {
-
-            let $this: this;
-            $this = this;
-            $this.visualOptions = options;
-            let vMarker: number;
-            categoryLegend = [];
-            let gradient: d3.Selection<SVGElement>;
-            d3.selectAll('.gradientSVG').remove();
-            d3.selectAll('.markerTriangle').remove();
+        public removeAllClasses(){
+            d3.selectAll(".gradientSVG").remove();
+            d3.selectAll(".markerTriangle").remove();
             this.rootElement.selectAll(`.lg_ErrorMessage`).remove();
             this.svg.selectAll(`.linearSVG`).remove();
             this.svgLinear.selectAll(`rect.range`).remove();
             this.svgLinear.selectAll(`rect.rectRange`).remove();
             this.svgLinear.selectAll(`rect.measure`).remove();
-            this.svg.selectAll('.lg_xLabels,.lg_yLabels').remove();
+            this.svg.selectAll(".lg_xLabels,.lg_yLabels").remove();
             this.svgLinear.selectAll(`line.marker, line.markerTilt`).remove();
             this.svgLinear.selectAll(`line.markermax, line.markermin`).remove();
-            d3.selectAll('.LG_verticalDataLabel').remove();
-            $('.lg_data_total').hide();
-            $('.lg_data_percentage').hide();
-            $('.lg_trendvalue1,.lg_trendvalue2').hide();
-            this.svg.style('margin-left', 0);
-            this.svg.style('margin-top', 0);
-            this.dataView = options.dataViews[0];
-            if (!options.dataViews || !this.dataView || !this.dataView.metadata) {
-                return;
-            }
-            this.data = this.converter(this.dataView, options); //calling Converter function
-            if (categoryFlag !== 1) {
-                $('.legend').hide();
-            } else {
-                $(`.legend`).show();
-            }
-            let viewport: IViewport;
-            viewport = options.viewport;
-            if (viewport.width < 60 || viewport.height < 50) {
-                return;
-            }
-            if ((this.settings.Orientation === `Horizontal`)
-                && (this.settings.legendPos === 'Top' || this.settings.legendPos === 'Top center')) {
-                if ((viewport.height / 2) - this.legend.getMargins().height < trendLabelHeight + targetLabelHeight) {
-                    if (!trendLabelFlag) {
-                        showTrendStatus = this.settings.showTrend;
-                        trendLabelFlag = true;
-                        if (this.settings.legendNewPosition === 'topLeft') {
-                            $('.lg_legend_tab').hide();
-                        }
-                    }
-                    this.settings.showTrend = false;
-                } else {
-                    if (trendLabelFlag) {
-                        this.settings.showTrend = showTrendStatus;
-                        trendLabelFlag = false;
-                        $('.lg_legend_tab').show();
-                    }
-                }
-                if (((viewport.height / 2) - 50 < this.legend.getMargins().height + targetLabelHeight)) {
-                    $('.lg_legend_tab').hide();
-                } else {
-                    $('.lg_legend_tab').show();
-                }
-                if (((viewport.height / 2) - 50 < this.legend.getMargins().height)) {
-                    $('.lg_data_tab').hide();
-                } else {
-                    $('.lg_data_tab').show();
-                }
-            } else if (this.settings.Orientation === `Horizontal`) {
-                if ((viewport.height / 2) < trendLabelHeight + targetLabelHeight) {
-                    if (!trendLabelFlag) {
-                        showTrendStatus = this.settings.showTrend;
-                        trendLabelFlag = true;
-                        if (this.settings.legendNewPosition === 'topLeft') {
-                            $('.lg_legend_tab').hide();
-                        }
-                    }
-                    this.settings.showTrend = false;
-                } else {
-                    if (trendLabelFlag) {
-                        this.settings.showTrend = showTrendStatus;
-                        trendLabelFlag = false;
-                        $('.lg_legend_tab').show();
-                    }
-                }
-            }
-            if (!this.data.actualExists) {
-                const message: string = 'Please add "Actual value" field';
-                this.rootElement
-                    .append('div')
-                    .classed('lg_ErrorMessage', true)
-                    .text(message)
-                    .attr('title', message);
-
-                return;
-            }
-
-            if (this.data.actual === null) {
-                return;
-            }
-            // Get settings
-            this.getSettings(this.dataView.metadata.objects);
-            // conditions to disable the zone if category exists
-            if (categoryFlag === 1) {
-                this.settings.showColor = false;
-            } else {
-                this.settings.showColor = getValue<number>(this.dataView.metadata.objects, `colorSelector`, `show`, 0) <= 0 ? false :
-                    getValue<number>(this.dataView.metadata.objects, `colorSelector`, `show`, 0);
-            }
-            if (this.settings.animationTime > 6) {
-                this.settings.animationTime = 6;
-            } else if (this.settings.animationTime < 1) {
-                this.settings.animationTime = 1;
-            }
-            // setting upperbound to rangetick width
-            if (this.settings.rangeWidth > 8) {
-                this.settings.rangeWidth = 8;
-            }
-            let legendHeight: IViewport;
-            legendHeight = this.legend.getMargins();
-            if (categoryFlag === 1 && this.settings.Orientation === `Vertical` &&
-                (this.settings.legendPos === 'Bottom' || this.settings.legendPos === 'Bottom center' ||
-                    this.settings.legendPos === 'Top' || this.settings.legendPos === 'Top center')) {
-                viewport.height = viewport.height - legendHeight.height;
-            } else if (categoryFlag === 1 && this.settings.Orientation === `Horizontal` &&
-                (this.settings.legendPos === 'Right' || this.settings.legendPos === 'Right center' ||
-                    this.settings.legendPos === 'Left' || this.settings.legendPos === 'Left center')) {
-                viewport.width = viewport.width - legendHeight.width - 15;
-            } else if (categoryFlag === 1 && this.settings.Orientation === `Horizontal` &&
-                (this.settings.legendPos === 'Bottom' || this.settings.legendPos === 'Bottom center')) {
-                viewport.height = viewport.height - legendHeight.height;
-            }
-            let rightMargin: number;
-            d3.selectAll('.legendItem').style('cursor', 'pointer');
-            d3.selectAll('.navArrow').style('cursor', 'pointer');
-            if (categoryFlag === 1 && this.settings.Orientation === `Horizontal`) {
-                if (this.settings.legendPos === 'Top' || this.settings.legendPos === 'Top center') {
-                    d3.selectAll('.lg_imagetab').style('margin-top', `${legendHeight.height}px`);
-                    d3.selectAll('.lg_data_tab').style('margin-left', `${this.settings.fontSize / 2.0}px`);
-                    d3.selectAll('.linearSVG').style('margin-left', `0px`);
-                } else if (this.settings.legendPos === 'Left' || this.settings.legendPos === 'Left center') {
-                    if (this.settings.legendNewPosition === 'topLeft') {
-                        d3.selectAll('.lg_legend_tab').style('margin-left', `${legendHeight.width}px`);
-                    }
-                    d3.selectAll('.lg_imagetab').style('margin-top', `0px`);
-                    d3.selectAll('.lg_data_tab').style('margin-left', `${legendHeight.width + (this.settings.fontSize / 2.0)}px`);
-                    d3.selectAll('.linearSVG').style('margin-left', `${legendHeight.width}px`);
-                } else {
-                    d3.selectAll('.lg_imagetab').style('margin-top', `0px`);
-                    d3.selectAll('.lg_data_tab').style('margin-left', `${this.settings.fontSize / 2.0}px`);
-                    d3.selectAll('.linearSVG').style('margin-left', `0px`);
-                }
-                if (this.settings.legendPos === 'Right' || this.settings.legendPos === 'Right center') {
-                    rightMargin = legendHeight.width;
-                } else {
-                    rightMargin = 0;
-                }
-            } else if (categoryFlag === 1 && this.settings.Orientation === `Vertical`) {
-                if (this.settings.legendPos === 'Top' || this.settings.legendPos === 'Top center') {
-                    d3.selectAll('.lg_imagetab').style('margin-top', `${legendHeight.height}px`)
-                        .style('margin-left', `${this.settings.fontSize / 2.0}px`);
-                    d3.selectAll('.linearSVG').style('margin-top', `${legendHeight.height}px`);
-                } else if (this.settings.legendPos === 'Left' || this.settings.legendPos === 'Left center') {
-                    d3.selectAll('.lg_imagetab').style('margin-top', `0px`)
-                        .style('margin-left', `${legendHeight.width + (this.settings.fontSize / 2.0)}px`);
-                } else {
-                    d3.selectAll('.lg_imagetab').style('margin-top', `0px`)
-                        .style('margin-left', `${this.settings.fontSize / 2.0}px`);
-                    d3.selectAll('.linearSVG').style('margin-top', `0px`);
-                }
-            } else {
-                d3.selectAll('.lg_imagetab').style('margin-top', `10px`);
-            }
-            if (this.data.states.length === 0) {
-                if (categoryFlag === 0 && this.settings.showColor) {
-                    this.data.states.push(this.data.max);
-                    this.data.states.push(this.settings.range4);
-                    this.data.states.push(this.settings.range3);
-                    this.data.states.push(this.settings.range2);
-                    this.data.states.push(this.settings.range1);
-                } else {
-                    this.data.states.push(this.data.max);
-                }
-            }
-            let legendColor: string[];
-            legendColor = [];
-            let sortedRanges: number[];
-            sortedRanges = this.data.states;
-            let percentageVal: PrimitiveValue;
-            let actualVal: string;
-            let trend1Val: string;
-            let trend2Val: string;
-            let width: number;
-            let height: number;
-            let modHeight: number;
-            const svgheight: number = viewport.height;
-            if (individualFlag !== 0) {
-                legendColor[0] = categoryLegend[individualFlag - 1].color;
-            } else {
-                let colorIndex: number = 0;
-                for (let index: number = 0; index < categoryLegend.length; index++) {
-                    if (tempSelectionId !== null && categoryLegend[index].key === selectedKey) {
-                        legendColor[colorIndex] = categoryLegend[index].color;
-                        colorIndex++;
-                    } else {
-                        legendColor[index] = categoryLegend[categoryLegend.length - index - 1].color;
-                    }
-                }
-            }
-            let axisFormatter: IValueFormatter;
-            axisFormatter = ValueFormatter.create({
-                format: this.data.actualFormat, precision: this.settings.scaleDecimalPlaces, value: this.settings.scaleDisplayUnits === 0 ?
-                    this.getValueUpdated(this.data.max) : this.settings.scaleDisplayUnits
-            });
-            let textProperties: TextProperties;
-            textProperties = {
-                fontFamily: `${this.settings.scaleFontFamily}`,
-                fontSize: `${this.settings.scaleFontSize}px`,
-                text: axisFormatter.format(this.data.max)
-            };
-            let maxFormattedDataWidth: number;
-            let halfMaxFormattedDataWidth: number;
-            maxFormattedDataWidth = textMeasurementService.measureSvgTextWidth(textProperties);
-            halfMaxFormattedDataWidth = maxFormattedDataWidth / 2;
-            const heightAdjust: number = 20;
-            if (this.settings.Orientation === `Horizontal`) {
-                $('.lg_imagetab').css('left', 'auto');
-                if (categoryFlag === 0) {
-                    $('.lg_imagetab').css('right', 0);
-                } else {
-                    $('.lg_imagetab').css('right', `${legendHeight.width + (this.settings.fontSize / 2.0)}px`);
-                }
-                height = viewport.height;
-                width = viewport.width - halfMaxFormattedDataWidth;
-                modHeight = viewport.height / 12;
-                this.svg
-                    .attr({
-                        height: viewport.height,
-                        width: viewport.width
-                    }).style('margin-top', `${(viewport.height / 2)}px`);
-                d3.select('.lg_data_tab').style('margin-top', `${(viewport.height / 2) - 50}px`);
-                this.svgLinear.attr(`transform`, `translate(0,5)`);
-            } else {
-                $('.lg_imagetab').css('right', 'auto');
-                $('.lg_imagetab').css('left', 0);
-                width = viewport.height;
-                height = viewport.width - heightAdjust;
-                modHeight = width / 12;
-                this.svg
-                    .attr({
-                        width: viewport.height / 11,
-                        height: '100%'
-                    }).style('margin-left', `${(viewport.width / 2) - (modHeight / 2)}px`);
-                this.svgLinear.attr(`transform`, `translate(5,0)`);
-            }
-            const percentVal : number = 100;
-            if (this.data.target) {
-                if (!this.settings.showRemainingPercentage) {
-                    if (this.data.actual < 0 && this.data.target < 0) {
-                        percentageVal = (this.data.actual * percentVal) / this.data.target;
-                        percentageVal = 200 - percentageVal;
-                        percentageVal = parseFloat(Number(percentageVal).toFixed(2));
-                    } else {
-                        percentageVal = (this.data.actual * percentVal) / this.data.target;
-                        percentageVal = parseFloat(Number(percentageVal).toFixed(2));
-                    }
-                } else {
-                    if (this.data.actual < 0 && this.data.target < 0) {
-                        percentageVal = -((this.data.target - this.data.actual) / this.data.target) * percentVal;
-                        if (this.data.actual > this.data.target) {
-                            percentageVal = 0;
-                        }
-                        percentageVal = parseFloat(Number(percentageVal).toFixed(2));
-                    } else {
-                        percentageVal = (this.data.actual * percentVal) / this.data.target;
-                        percentageVal = percentVal - percentageVal < 0 ? 0 : percentVal - percentageVal;
-                        percentageVal = parseFloat(Number(percentageVal).toFixed(2));
-                    }
-                }
-            } else {
-                percentageVal = percentVal;
-            }
-            let minRangeValue: number;
-            let maxRangeValue: number;
-            let vDataLabel: d3.Selection<SVGElement>;
-            let upArrow: string;
-            upArrow = `&#8599`;
-            let percentageFont: number;
-            percentageFont = this.settings.fontSize / 2.0;
-            let percentageFontTrend: number;
-            percentageFontTrend = this.settings.trendfontSize / 2.5;
-            let range: d3.selection.Update<number>;
-            let measure: d3.Selection<SVGElement>;
-            let measure2: d3.selection.Update<number>;
-            let xScale: d3.scale.Linear<number, number>;
-            xScale = d3.scale.linear()
-                .domain([this.data.min, this.data.max])
-                .range([30, viewport.width]).nice();
-            let yScale: d3.scale.Linear<number, number>;
-            yScale = d3.scale.linear()
-                .domain([this.data.min, this.data.max])
-                .range([viewport.height - 15, 15]).nice();
-            let xAxis: d3.svg.Axis;
-            const precisionValue: number = this.settings.markerWidth;
-            const precisionValueTrend: number = this.settings.lineWidth;
-
-            actualVal = this.getFormattedData(this.data.actual, this.settings.labelDisplayUnits, precisionValue, this.data.actualFormat);
-            trend1Val = this.getFormattedData(
-                this.data.trendValueOne, this.settings.trendDisplayUnits, precisionValueTrend, this.data.trend1Format);
-            trend2Val = this.getFormattedData(
-                this.data.trendValueTwo, this.settings.trendDisplayUnits, precisionValueTrend, this.data.trend2Format);
-
-            const textProps: TextProperties = {
-                fontSize: `${this.settings.fontSize}px`,
-                fontFamily: this.settings.fontFamily,
-                text: actualVal
-            };
-            const horizontalWidth: number = (this.settings.showPercentage) ?
-                (options.viewport.width / 2.1) - 20 : options.viewport.width - 30;
-            let updatedText: string;
-            updatedText = textMeasurementService.getTailoredTextOrDefault(textProps, horizontalWidth);
-            const actualTooltip: string = this.getFormattedTooltipData(this.data.actualFormat, this.data.actual);
-            this.actual.text(updatedText)
-                .attr('title', actualTooltip)
-                .style(`font-size`, `${this.settings.fontSize}px`)
-                .style(`font-family`, this.settings.fontFamily)
-                .style(`color`, this.settings.DataColor)
-                .style(`margin-right`, `${percentageFont}px`);
-
-            const textPropspercent: TextProperties = {
-                fontSize: `${this.settings.percentagefontSize}px`,
-                fontFamily: this.settings.percentagefontFamily,
-                text: `${percentageVal}%`
-            };
-            const dataWidth: number = $('.lg_data_total').width();
-            const viewportWidthCache : number = 70;
-            const updatedTextpercent: string =
-            textMeasurementService.getTailoredTextOrDefault(textPropspercent, options.viewport.width - dataWidth - viewportWidthCache);
-
-            this.percentage.text(updatedTextpercent)
-                .attr('title', `${percentageVal}%`)
-                .style(`font-size`, `${this.settings.percentagefontSize}px`)
-                .style(`color`, this.settings.PercentageDataColor)
-                .style(`font-Family`, this.settings.percentagefontFamily); //Using values which are stored in data object
-
-            let actualFormatter: IValueFormatter;
-            actualFormatter = ValueFormatter.create({
-                format: this.data.actualFormat
-            });
-            let className: string;
-            let translateVal: string;
-            let axisFunction: d3.svg.Axis;
-            const horizontalCacheHeight : number = 38; // adjusts the height of the legend when the orientation is horizontal.
-            const verticalCacheHeight : number = 13; // adjusts the height of the legend when the orientation is vertical.
-            if (categoryFlag === 0 && this.settings.Orientation === 'Horizontal') {
-                if (this.settings.legendNewPosition === 'aboveMarker') {
-                    d3.selectAll('.lg_legend_tab').style('margin-top', `${((viewport.height / 2) - horizontalCacheHeight)}px`);
-                } else {
-                    d3.selectAll('.lg_legend_tab').style('margin-top', `0px`);
-                }
-            } else if (categoryFlag === 0 && this.settings.Orientation === 'Vertical') {
-                if (this.settings.legendNewPosition === 'aboveMarker') {
-                    d3.selectAll('.lg_legend_tab').style('margin-top', `${yScale(this.data.target) - verticalCacheHeight}px`);
-                } else {
-                    d3.selectAll('.lg_legend_tab').style('margin-top', `0px`);
-                }
-            } else if (categoryFlag === 1 && this.settings.Orientation === `Horizontal`) {
-                if (this.settings.legendPos === 'Top' || this.settings.legendPos === 'Top center') {
-                    if (this.settings.legendNewPosition === 'aboveMarker') {
-                        d3.selectAll('.lg_legend_tab').style('margin-top', `${(viewport.height / 2) - horizontalCacheHeight}px`);
-                    } else {
-                        d3.selectAll('.lg_legend_tab').style('margin-top', `${legendHeight.height}px`);
-                    }
-                } else {
-                    if (this.settings.legendNewPosition === 'aboveMarker') {
-                        d3.selectAll('.lg_legend_tab').style('margin-top', `${((viewport.height / 2) - horizontalCacheHeight)}px`);
-                    } else {
-                        d3.selectAll('.lg_legend_tab').style('margin-top', `0px`);
-                    }
-                }
-            } else if (categoryFlag === 1 && this.settings.Orientation === `Vertical`) {
-                if (this.settings.legendPos === 'Top' || this.settings.legendPos === 'Top center') {
-                    if (this.settings.legendNewPosition === 'aboveMarker') {
-                        d3.selectAll('.lg_legend_tab').style('margin-top',
-                                                             `${yScale(this.data.target) + legendHeight.height - verticalCacheHeight}px`);
-                    } else {
-                        d3.selectAll('.lg_legend_tab').style('margin-top', `${(1 + legendHeight.height)}px`);
-                    }
-                } else {
-                    if (this.settings.legendNewPosition === 'aboveMarker') {
-                        d3.selectAll('.lg_legend_tab').style('margin-top', `${yScale(this.data.target) - verticalCacheHeight}px`);
-                    } else {
-                        d3.selectAll('.lg_legend_tab').style('margin-top', `0px`);
-                    }
-                }
-            }
-            if (this.settings.Orientation === `Horizontal`) {
-                this.svgLinear.selectAll(`rect.range`).remove();
-                this.svgLinear.selectAll(`.rectRange`).remove();
-                this.svgLinear.selectAll(`rect.measure`).remove();
-                $('.lg_data_total').hide();
-                if (this.settings.showlabel) {
-                    $('.lg_data_total').show();
-                }
-                if (this.settings.showPercentage) {
-                    $('.lg_data_percentage').show();
-                } else {
-                    $('.lg_data_percentage').hide();
-                }
-                this.trendValue1.style(`text-align`, `right`);
-                this.trendValue2.style(`text-align`, `right`);
-                this.data.min = xScale.domain()[0];
-                this.data.max = xScale.domain()[1];
-                // to adjust the xScale range according to the new data max
-                let xTextProperties: TextProperties;
-                xTextProperties = {
-                    fontFamily: `${this.settings.scaleFontFamily}`,
-                    fontSize: `${this.settings.scaleFontSize}px`,
-                    text: axisFormatter.format(this.data.max)
-                };
-                let xMaxFormattedDataWidth: number;
-                xMaxFormattedDataWidth = textMeasurementService.measureSvgTextWidth(xTextProperties);
-                let xHalfMaxFormattedDataWidth: number;
-                xHalfMaxFormattedDataWidth = maxFormattedDataWidth / 2;
-                const distance: number = (xHalfMaxFormattedDataWidth * 10 / xHalfMaxFormattedDataWidth);
-                xScale.range([distance, viewport.width - distance]);
-                xAxis = d3.svg.axis().scale(xScale)
-                    .tickFormat(actualFormatter.format)
-                    .orient('down');
-                minRangeValue = (this.settings.MinRangeValue === null
-                    || this.settings.MinRangeValue < this.data.min
-                    || this.settings.MinRangeValue > this.data.max) ? this.data.min : this.settings.MinRangeValue;
-                maxRangeValue = (this.settings.MaxRangeValue === null
-                    || this.settings.MaxRangeValue < this.data.min
-                    || this.settings.MaxRangeValue > this.data.max) ? this.data.max : this.settings.MaxRangeValue;
-            }
-
-            let colors: string[];
-            colors = [];
-            let offSetValue: number[];
-            offSetValue = [];
+            d3.selectAll(".LG_verticalDataLabel").remove();
+            $(".lg_data_total").hide();
+            $(".lg_data_percentage").hide();
+            $(".lg_trendvalue1,.lg_trendvalue2").hide();
+        }
+        public removeSvgMarker(){
             this.svgLinear.selectAll(`line.marker`).remove();
             this.svgLinear.selectAll(`line.bestMarker`).remove();
             this.svgLinear.selectAll(`line.markermin`).remove();
             this.svgLinear.selectAll(`line.markermax`).remove();
 
-            let measureColor: string = this.settings.ActualFillColor;
-            if (this.data.target !== null) {
-                if (this.data.actual > this.data.target) {
-                    measureColor = this.settings.ActualFillColorGreater;
-                } else if (this.data.actual === this.data.target) {
-                    measureColor = this.settings.ActualFillColorEqual;
-                }
-
-            }
-            if (this.settings.Orientation === `Horizontal`) {
-                let margin1: number;
-                let margin2: number;
-                let margin3: number;
-                let margin4: number;
-                this.data.max = xScale.domain()[1];
-                if (this.settings.fillOption === `value`) {
-                    const range12Max: number = Math.max(this.settings.range1, this.settings.range2);
-                    const range123Max: number = Math.max(this.settings.range1, this.settings.range2, this.settings.range3);
-                    this.settings.range1 = this.settings.range1 === null ? null
-                        : this.settings.range1 < this.data.min ? null
-                            : this.settings.range1 > this.data.max ? null : this.settings.range1;
-                    this.settings.range2 = this.settings.range2 === null ? null
-                        : this.settings.range2 < this.settings.range1 ? this.settings.range1
-                            : this.settings.range2 > this.data.max ? null : this.settings.range2;
-                    this.settings.range3 = this.settings.range3 === null ? null
-                        : this.settings.range3 < range12Max ? range12Max
-                            : this.settings.range3 > this.data.max ? null : this.settings.range3;
-                    this.settings.range4 = this.settings.range4 === null ? null
-                        : this.settings.range4 < range123Max ?
-                            range123Max : this.settings.range4 > this.data.max ? null : this.settings.range4;
-                    margin1 = this.settings.range1;
-                    margin2 = this.settings.range2;
-                    margin3 = this.settings.range3;
-                    margin4 = this.settings.range4;
-                } else {
-                    if (this.settings.percentageVal1 > 100) {
-                        this.settings.percentageVal1 = 100;
-                        this.settings.percentageVal2 = 0;
-                        this.settings.percentageVal3 = 0;
+        }
+        public update(options: VisualUpdateOptions): void {
+            try {
+                this.events.renderingStarted(options);
+                let $this: this = this;
+                $this.visualOptions = options;
+                let vMarker: number;
+                categoryLegend = [];
+                let gradient: d3.Selection<SVGElement>;
+                this.removeAllClasses();
+                this.svg.style("margin-left", 0);
+                this.svg.style("margin-top", 0);
+                this.dataView = options.dataViews[0];
+                if (!options.dataViews || !this.dataView || !this.dataView.metadata) { return; }
+                this.data = this.converter(this.dataView, options);
+                if (categoryFlag !== 1) { $(".legend").hide();}
+                 else {    $(`.legend`).show();}
+                let viewport: IViewport = options.viewport;
+                if (viewport.width < 60 || viewport.height < 50) { return; }
+                if ((this.settings.Orientation === `Horizontal`) && (this.settings.legendPos === "Top" || this.settings.legendPos === "Top center")) {
+                    if ((viewport.height / 2) - this.legend.getMargins().height < trendLabelHeight + targetLabelHeight) {
+                        if (!trendLabelFlag) {
+                            showTrendStatus = this.settings.showTrend;
+                            trendLabelFlag = true;
+                            if (this.settings.legendNewPosition === "topLeft") { $(".lg_legend_tab").hide();}
+                        }
+                        this.settings.showTrend = false;
                     } else {
-                        if (this.settings.percentageVal2 > (100 - this.settings.percentageVal1)) {
-                            this.settings.percentageVal2 = 100 - this.settings.percentageVal1;
-                            this.settings.percentageVal3 = 0;
-                        } else {
-                            if (this.settings.percentageVal3 > (100 - this.settings.percentageVal1 - this.settings.percentageVal2)) {
-                                this.settings.percentageVal3 = 100 - this.settings.percentageVal1 - this.settings.percentageVal2;
-                            }
+                        if (trendLabelFlag) {
+                            this.settings.showTrend = showTrendStatus;
+                            trendLabelFlag = false;
+                            $(".lg_legend_tab").show();
                         }
                     }
-                    margin1 = this.settings.percentageVal1;
-                    margin2 = margin1 + this.settings.percentageVal2;
-                    margin3 = margin2 + this.settings.percentageVal3;
-                }
-                this.data.states = [];
-                let sortedMeasure: number[];
-                sortedMeasure = [];
-                for (let iterator: number = 0; iterator < actualValue.length; iterator++) {
-                    sortedMeasure[iterator] = actualValue[actualValue.length - iterator - 1];
-                }
-                if (categoryFlag === 0 && this.settings.showColor) {
-                    this.data.states.push(this.data.max);
-                    if (this.settings.fillOption === `value`) {
-                        this.data.states.push(margin4);
-                    }
-                    this.data.states.push(margin3);
-                    this.data.states.push(margin2);
-                    this.data.states.push(margin1);
-                } else {
-                    this.data.states.push(this.data.max);
-                }
-                sortedRanges = this.data.states;
-                if (this.settings.fillOption === `value`) {
-                    range = this.svgLinear.selectAll(`rect.range`)
-                        .data(sortedRanges);
-                    range.enter()
-                        .append(`rect`)
-                        .attr(`class`, function (d: number, i: number): string {
-                            return rangeLiteral + i;
-                        });
-                } else {
-                    if (this.settings.Orientation === `Horizontal`) {
-                        range = this.svgLinear.append(`rect`)
-                            .classed(`rectRange`, true)
-                            .data(sortedRanges);
-                        range.enter()
-                            .append('rect');
+                    if (((viewport.height / 2) - 50 < this.legend.getMargins().height + targetLabelHeight)) {   $(".lg_legend_tab").hide();}
+                     else {    $(".lg_legend_tab").show();}
+                    if (((viewport.height / 2) - 50 < this.legend.getMargins().height)) {  $(".lg_data_tab").hide();}
+                     else { $(".lg_data_tab").show();}
+                } else if (this.settings.Orientation === `Horizontal`) {
+                    if ((viewport.height / 2) < trendLabelHeight + targetLabelHeight) {
+                        if (!trendLabelFlag) {
+                            showTrendStatus = this.settings.showTrend;
+                            trendLabelFlag = true;
+                            if (this.settings.legendNewPosition === "topLeft") {
+                                $(".lg_legend_tab").hide();
+                            }
+                        }
+                        this.settings.showTrend = false;
+                    } else {
+                        if (trendLabelFlag) {
+                            this.settings.showTrend = showTrendStatus;
+                            trendLabelFlag = false;
+                            $(".lg_legend_tab").show();
+                        }
                     }
                 }
-                let measureHeight: number;
-                let measureYPos: number;
+                if (!this.data.actualExists) {
+                    const message: string = 'Please add "Actual value" field';
+                    this.rootElement
+                        .append("div")
+                        .classed("lg_ErrorMessage", true)
+                        .text(message)
+                        .attr("title", message);
 
-                if (categoryFlag === 0 && this.settings.showColor) {
-                    const zoneLen: number = this.colorsGlobal.length;
-                    for (let index: number = 0; index < zoneLen; index++) {
-                        colors.push(this.colorsGlobal[index]);
-                        offSetValue.push(this.data.states[index]);
+                    return;
+                }
+                if (this.data.actual === null) {  return; }
+                this.getSettings(this.dataView.metadata.objects);
+                if (categoryFlag === 1) {
+                    this.settings.showColor = false;
+                } else {
+                    this.settings.showColor = getValue<number>(this.dataView.metadata.objects, `colorSelector`, `show`, 0) <= 0 ? false :
+                            getValue<number>(this.dataView.metadata.objects, `colorSelector`, `show`, 0);
+                }
+                if (this.settings.animationTime > 6) {
+                    this.settings.animationTime = 6;
+                } else if (this.settings.animationTime < 1) {
+                    this.settings.animationTime = 1;
+                }
+                if (this.settings.rangeWidth > 8) { this.settings.rangeWidth = 8; }
+                let legendHeight: IViewport = this.legend.getMargins();
+                
+                let legendPosSettings = this.settings.legendPos;
+                if (categoryFlag === 1 && this.settings.Orientation === `Vertical` &&
+                    (legendPosSettings === "Bottom" || legendPosSettings === "Bottom center" ||
+                    legendPosSettings === "Top" || legendPosSettings === "Top center")) {
+                    viewport.height = viewport.height - legendHeight.height;
+                } else if (categoryFlag === 1 && this.settings.Orientation === `Horizontal` &&
+                    (legendPosSettings === "Right" || legendPosSettings === "Right center" ||
+                    legendPosSettings === "Left" || legendPosSettings === "Left center")) {
+                    viewport.width = viewport.width - legendHeight.width - 15;
+                } else if (categoryFlag === 1 && this.settings.Orientation === `Horizontal` &&
+                    (legendPosSettings === "Bottom" || legendPosSettings === "Bottom center")) {
+                    viewport.height = viewport.height - legendHeight.height;
+                }
+                let rightMargin: number;
+                d3.selectAll(".legendItem").style("cursor", "pointer");
+                d3.selectAll(".navArrow").style("cursor", "pointer");
+                let imagetab_selectAll = d3.selectAll(".lg_imagetab");
+                let data_Tab_selectAll = d3.selectAll(".lg_data_tab");
+                let linearSVG_selectAll = d3.selectAll(".linearSVG");
+                if (categoryFlag === 1 && this.settings.Orientation === `Horizontal`) {
+                    if (legendPosSettings === "Top" || legendPosSettings === "Top center") {
+                        imagetab_selectAll.style("margin-top", `${legendHeight.height}px`);
+                        data_Tab_selectAll.style("margin-left", `${this.settings.fontSize / 2.0}px`);
+                        linearSVG_selectAll.style("margin-left", `0px`);
+                    } else if (legendPosSettings === "Left" || legendPosSettings === "Left center") {
+                        if (this.settings.legendNewPosition === "topLeft") {
+                            d3.selectAll(".lg_legend_tab").style("margin-left", `${legendHeight.width}px`);
+                        }
+                        imagetab_selectAll.style("margin-top", `0px`);
+                        data_Tab_selectAll
+                            .style("margin-left", `${legendHeight.width + (this.settings.fontSize / 2.0)}px`);
+                            linearSVG_selectAll.style("margin-left", `${legendHeight.width}px`);
+                    } else {
+                        imagetab_selectAll.style("margin-top", `0px`);
+                        data_Tab_selectAll.style("margin-left", `${this.settings.fontSize / 2.0}px`);
+                        linearSVG_selectAll.style("margin-left", `0px`);
                     }
+                    if (legendPosSettings === "Right" || legendPosSettings === "Right center") {
+                        rightMargin = legendHeight.width;
+                    } else {
+                        rightMargin = 0;
+                    }
+                } else if (categoryFlag === 1 && this.settings.Orientation === `Vertical`) {
+                    if (this.settings.legendPos === "Top" || this.settings.legendPos === "Top center") {
+                        imagetab_selectAll.style("margin-top", `${legendHeight.height}px`)
+                            .style("margin-left", `${this.settings.fontSize / 2.0}px`);
+                            linearSVG_selectAll.style("margin-top", `${legendHeight.height}px`);
+                    } else if (this.settings.legendPos === "Left" || this.settings.legendPos === "Left center") {
+                        imagetab_selectAll.style("margin-top", `0px`)
+                            .style("margin-left", `${legendHeight.width + (this.settings.fontSize / 2.0)}px`);
+                    } else {
+                        imagetab_selectAll.style("margin-top", `0px`)
+                            .style("margin-left", `${this.settings.fontSize / 2.0}px`);
+                            linearSVG_selectAll.style("margin-top", `0px`);
+                    }
+                } else {
+                    imagetab_selectAll.style("margin-top", `10px`);
+                }
+                if (this.data.states.length === 0) {
+                    if (categoryFlag === 0 && this.settings.showColor) {
+                        this.data.states.push(this.data.max);
+                        this.data.states.push(this.settings.range4);
+                        this.data.states.push(this.settings.range3);
+                        this.data.states.push(this.settings.range2);
+                        this.data.states.push(this.settings.range1);
+                    } else {
+                        this.data.states.push(this.data.max);
+                    }
+                }
+                let legendColor: string[] = [];
+                let sortedRanges: number[] = this.data.states;
+                let percentageVal: PrimitiveValue;
+                let actualVal: string;
+                let trend1Val: string;
+                let trend2Val: string;
+                let width: number;
+                let height: number;
+                let modHeight: number;
+                const svgheight: number = viewport.height;
+                if (individualFlag !== 0) {
+                    legendColor[0] = categoryLegend[individualFlag - 1].color;
+                } else {
+                    let colorIndex: number = 0;
+                    for (let index: number = 0; index < categoryLegend.length; index++) {
+                        if (tempSelectionId !== null && categoryLegend[index].key === selectedKey) {
+                            legendColor[colorIndex] = categoryLegend[index].color;
+                            colorIndex++;
+                        } else {
+                            legendColor[index] = categoryLegend[categoryLegend.length - index - 1].color;
+                        }
+                    }
+                }
+                if (this.data.max === null) {  this.data.max = 0; }
+                let axisFormatter: IValueFormatter = valueFormatter.create({
+                    format: this.data.actualFormat, precision:
+                        this.settings.scaleDecimalPlaces, value: this.settings.scaleDisplayUnits === 0 ?
+                            this.getValueUpdated(this.data.max) : this.settings.scaleDisplayUnits
+                });
+                let textProperties: TextProperties = {
+                    fontFamily: `${this.settings.scaleFontFamily}`,
+                    fontSize: `${this.settings.scaleFontSize}px`,
+                    text: axisFormatter.format(this.data.max)
+                };
+                let maxFormattedDataWidth: number = textMeasurementService.measureSvgTextWidth(textProperties);
+                let halfMaxFormattedDataWidth: number = maxFormattedDataWidth / 2;
+                const heightAdjust: number = 20;
+                if (this.settings.Orientation === `Horizontal`) {
+                    $(".lg_imagetab").css("left", "auto");
+                    if (categoryFlag === 0) { $(".lg_imagetab").css("right", 0);} 
+                    else { $(".lg_imagetab").css("right", `${legendHeight.width + (this.settings.fontSize / 2.0)}px`);}
+                    height = viewport.height;
+                    width = viewport.width - halfMaxFormattedDataWidth;
+                    modHeight = viewport.height / 12;
+                    this.svg
+                        .attr({
+                            height: viewport.height,
+                            width: viewport.width
+                        }).style("margin-top", `${(viewport.height / 2)}px`);
+                    d3.select(".lg_data_tab").style("margin-top", `${(viewport.height / 2) - 50}px`);
+                    this.svgLinear.attr(`transform`, `translate(0,5)`);
+                } else {
+                    $(".lg_imagetab").css("right", "auto");
+                    $(".lg_imagetab").css("left", 0);
+                    width = viewport.height;
+                    height = viewport.width - heightAdjust;
+                    modHeight = width / 12;
+                    this.svg.attr({
+                            height: "100%",
+                            width: viewport.height / 11
+                        }).style("margin-left", `${(viewport.width / 2) - (modHeight / 2)}px`);
+                    this.svgLinear.attr(`transform`, `translate(5,0)`);
+                }
+                const percentVal: number = 100;
+                if (this.data.target) {
+                    if (!this.settings.showRemainingPercentage) {
+                        if (this.data.actual < 0 && this.data.target < 0) {
+                            percentageVal = (this.data.actual * percentVal) / this.data.target;
+                            percentageVal = 200 - percentageVal;
+                            percentageVal = parseFloat(Number(percentageVal).toFixed(2));
+                        } else {
+                            percentageVal = (this.data.actual * percentVal) / this.data.target;
+                            percentageVal = parseFloat(Number(percentageVal).toFixed(2));
+                        }
+                    } else {
+                        if (this.data.actual < 0 && this.data.target < 0) {
+                            percentageVal = -((this.data.target - this.data.actual) / this.data.target) * percentVal;
+                            if (this.data.actual > this.data.target) {
+                                percentageVal = 0;
+                            }
+                            percentageVal = parseFloat(Number(percentageVal).toFixed(2));
+                        } else {
+                            percentageVal = (this.data.actual * percentVal) / this.data.target;
+                            percentageVal = percentVal - percentageVal < 0 ? 0 : percentVal - percentageVal;
+                            percentageVal = parseFloat(Number(percentageVal).toFixed(2));
+                        }
+                    }
+                } else {
+                    percentageVal = percentVal;
+                }
+                let minRangeValue: number;
+                let maxRangeValue: number;
+                let vDataLabel: d3.Selection<SVGElement>;
+                let upArrow: string = `&#8599`;
+                let percentageFont: number = this.settings.fontSize / 2.0;
+                let percentageFontTrend: number = this.settings.trendfontSize / 2.5;
+                let range: d3.selection.Update<number>;
+                let measure: d3.Selection<SVGElement>;
+                let measure2: d3.selection.Update<number>;
+                let xScale: d3.scale.Linear<number, number>;
+                xScale = d3.scale.linear()
+                    .domain([this.data.min, this.data.max])
+                    .range([30, viewport.width]).nice();
+                let yScale: d3.scale.Linear<number, number> = d3.scale.linear()
+                .domain([this.data.min, this.data.max])
+                .range([viewport.height - 15, 15]).nice();
+                let xAxis: d3.svg.Axis;
+                const precisionValue: number = this.settings.markerWidth;
+                const precisionValueTrend: number = this.settings.lineWidth;
+                actualVal = this.getFormattedData(
+                    this.data.actual, this.settings.labelDisplayUnits, precisionValue, this.data.actualFormat);
+                trend1Val = this.getFormattedData(
+                    this.data.trendValueOne, this.settings.trendDisplayUnits, precisionValueTrend, this.data.trend1Format);
+                trend2Val = this.getFormattedData(
+                    this.data.trendValueTwo, this.settings.trendDisplayUnits, precisionValueTrend, this.data.trend2Format);
+                const textProps: TextProperties = {
+                    fontFamily: this.settings.fontFamily,
+                    fontSize: `${this.settings.fontSize}px`,
+                    text: actualVal
+                };
+                const horizontalWidth: number = (this.settings.showPercentage) ? (options.viewport.width / 2.1) - 20 : options.viewport.width - 30;
+                let updatedText: string = textMeasurementService.getTailoredTextOrDefault(textProps, horizontalWidth);
+                const actualTooltip: string = this.getFormattedTooltipData(this.data.actualFormat, this.data.actual);
+                this.actual.text(updatedText)
+                    .attr("title", actualTooltip)
+                    .style(`font-size`, `${this.settings.fontSize}px`)
+                    .style(`font-family`, this.settings.fontFamily)
+                    .style(`color`, this.settings.DataColor)
+                    .style(`margin-right`, `${percentageFont}px`);
+                const textPropspercent: TextProperties = {
+                    fontFamily: this.settings.percentagefontFamily,
+                    fontSize: `${this.settings.percentagefontSize}px`,
+                    text: `${percentageVal}%`
+                };
+                const dataWidth: number = $(".lg_data_total").width();
+                const viewportWidthCache: number = 70;
+                const updatedTextpercent: string =
+                    textMeasurementService.
+                        getTailoredTextOrDefault(textPropspercent, options.viewport.width - dataWidth - viewportWidthCache);
+                this.percentage.text(updatedTextpercent)
+                    .attr("title", `${percentageVal}%`)
+                    .style(`font-size`, `${this.settings.percentagefontSize}px`)
+                    .style(`color`, this.settings.PercentageDataColor)
+                    .style(`font-Family`,
+                        this.settings.percentagefontFamily);
+                let actualFormatter: IValueFormatter = valueFormatter.create({
+                    format: this.data.actualFormat
+                });
+                let className: string;
+                let translateVal: string;
+                let axisFunction: d3.svg.Axis;
+                let legend_tab_selectAll = d3.selectAll(".lg_legend_tab");
+                const horizontalCacheHeight: number = 38;
+                const verticalCacheHeight: number = 13;
+                if (categoryFlag === 0 && this.settings.Orientation === "Horizontal") {
+                    if (this.settings.legendNewPosition === "aboveMarker") { legend_tab_selectAll
+                    .style("margin-top", `${((viewport.height / 2) - horizontalCacheHeight)}px`);} 
+                    else {    legend_tab_selectAll.style("margin-top", `0px`);}
+                } else if (categoryFlag === 0 && this.settings.Orientation === "Vertical") {
+                    if (this.settings.legendNewPosition === "aboveMarker") {
+                        legend_tab_selectAll
+                            .style("margin-top", `${yScale(this.data.target) - verticalCacheHeight}px`);
+                    } else {
+                        legend_tab_selectAll.style("margin-top", `0px`);
+                    }
+                } else if (categoryFlag === 1 && this.settings.Orientation === `Horizontal`) {
+                    if (this.settings.legendPos === "Top" || this.settings.legendPos === "Top center") {
+                        if (this.settings.legendNewPosition === "aboveMarker") { legend_tab_selectAll
+                                .style("margin-top", `${(viewport.height / 2) - horizontalCacheHeight}px`);
+                        } else {
+                            legend_tab_selectAll.style("margin-top", `${legendHeight.height}px`);
+                        }
+                    } else {
+                        if (this.settings.legendNewPosition === "aboveMarker") {
+                            legend_tab_selectAll
+                                .style("margin-top", `${((viewport.height / 2) - horizontalCacheHeight)}px`);
+                        } else {
+                            legend_tab_selectAll.style("margin-top", `0px`);
+                        }
+                    }
+                } else if (categoryFlag === 1 && this.settings.Orientation === `Vertical`) {
+                    if (this.settings.legendPos === "Top" || this.settings.legendPos === "Top center") {
+                        if (this.settings.legendNewPosition === "aboveMarker") {
+                            legend_tab_selectAll
+                                .style("margin-top",
+                                    `${yScale(this.data.target) + legendHeight.height - verticalCacheHeight}px`);
+                        } else {
+                            legend_tab_selectAll.style("margin-top", `${(1 + legendHeight.height)}px`);
+                        }
+                    } else {
+                        if (this.settings.legendNewPosition === "aboveMarker") {
+                            legend_tab_selectAll
+                                .style("margin-top", `${yScale(this.data.target) - verticalCacheHeight}px`);
+                        } else {
+                            legend_tab_selectAll.style("margin-top", `0px`);
+                        }
+                    }
+                }
+                if (this.settings.Orientation === `Horizontal`) {
+                    this.svgLinear.selectAll(`rect.range`).remove();
+                    this.svgLinear.selectAll(`.rectRange`).remove();
+                    this.svgLinear.selectAll(`rect.measure`).remove();
+                    $(".lg_data_total").hide();
+                    if (this.settings.showlabel) {
+                        $(".lg_data_total").show();
+                    }
+                    if (this.settings.showPercentage) {
+                        $(".lg_data_percentage").show();
+                    } else {
+                        $(".lg_data_percentage").hide();
+                    }
+                    this.trendValue1.style(`text-align`, `right`);
+                    this.trendValue2.style(`text-align`, `right`);
+                    this.data.min = xScale.domain()[0];
+                    this.data.max = xScale.domain()[1];
+                    let xTextProperties: TextProperties = {
+                        fontFamily: `${this.settings.scaleFontFamily}`,
+                        fontSize: `${this.settings.scaleFontSize}px`,
+                        text: axisFormatter.format(this.data.max)
+                    };
+                    let xMaxFormattedDataWidth: number = textMeasurementService.measureSvgTextWidth(xTextProperties);
+                    let xHalfMaxFormattedDataWidth: number = maxFormattedDataWidth / 2;
+                    const distance: number = (xHalfMaxFormattedDataWidth * 10 / xHalfMaxFormattedDataWidth);
+                    xScale.range([distance, viewport.width - distance]);
+                    xAxis = d3.svg.axis().scale(xScale)
+                        .tickFormat(actualFormatter.format)
+                        .orient("down");
+                    minRangeValue = (this.settings.MinRangeValue === null || this.settings.MinRangeValue < this.data.min
+                        || this.settings.MinRangeValue > this.data.max) ? this.data.min : this.settings.MinRangeValue;
+                    maxRangeValue = (this.settings.MaxRangeValue === null || this.settings.MaxRangeValue < this.data.min
+                        || this.settings.MaxRangeValue > this.data.max) ? this.data.max : this.settings.MaxRangeValue;
+                }
+                let colors: string[] = [];
+                let offSetValue: number[] = [];
+                this.removeSvgMarker();
+                let measureColor: string = this.settings.ActualFillColor;
+                if (this.data.target !== null) {
+                    if (this.data.actual > this.data.target) {
+                        measureColor = this.settings.ActualFillColorGreater;
+                    } else if (this.data.actual === this.data.target) {
+                        measureColor = this.settings.ActualFillColorEqual;
+                    }
+                }
+                if (this.settings.Orientation === `Horizontal`) {
+                    let margin1: number;
+                    let margin2: number;
+                    let margin3: number;
+                    let margin4: number;
+                    this.data.max = xScale.domain()[1];
                     if (this.settings.fillOption === `value`) {
+                        const range12Max: number = Math.max(this.settings.range1, this.settings.range2);
+                        const range123Max: number = Math.max(this.settings.range1, this.settings.range2, this.settings.range3);
+                        this.settings.range1 = this.settings.range1 === null ? null : this.settings.range1 < this.data.min ? null
+                                : this.settings.range1 > this.data.max ? null : this.settings.range1;
+                        this.settings.range2 = this.settings.range2 === null ? null : this.settings.range2 < this.settings.range1 ? this.settings.range1
+                                : this.settings.range2 > this.data.max ? null : this.settings.range2;
+                        this.settings.range3 = this.settings.range3 === null ? null : this.settings.range3 < range12Max ? range12Max
+                                : this.settings.range3 > this.data.max ? null : this.settings.range3;
+                        this.settings.range4 = this.settings.range4 === null ? null : this.settings.range4 < range123Max ?
+                                range123Max : this.settings.range4 > this.data.max ? null : this.settings.range4;
+                        margin1 = this.settings.range1;
+                        margin2 = this.settings.range2;
+                        margin3 = this.settings.range3;
+                        margin4 = this.settings.range4;
+                    } else {
+                        if (this.settings.percentageVal1 > 100) {
+                            this.settings.percentageVal1 = 100;
+                            this.settings.percentageVal2 = 0;
+                            this.settings.percentageVal3 = 0;
+                        } else {
+                            if (this.settings.percentageVal2 > (100 - this.settings.percentageVal1)) {
+                                this.settings.percentageVal2 = 100 - this.settings.percentageVal1;
+                                this.settings.percentageVal3 = 0;
+                            } else {
+                                if (this.settings.percentageVal3 > (100 - this.settings.percentageVal1 - this.settings.percentageVal2)) {
+                                    this.settings.percentageVal3 = 100 - this.settings.percentageVal1 - this.settings.percentageVal2;
+                                }
+                            }
+                        }
+                        margin1 = this.settings.percentageVal1;
+                        margin2 = margin1 + this.settings.percentageVal2;
+                        margin3 = margin2 + this.settings.percentageVal3;
+                    }
+                    this.data.states = [];
+                    let sortedMeasure: number[]  = [];
+                    for (let iterator: number = 0; iterator < actualValue.length; iterator++) {
+                        sortedMeasure[iterator] = actualValue[actualValue.length - iterator - 1];
+                    }
+                    if (categoryFlag === 0 && this.settings.showColor) {
+                        this.data.states.push(this.data.max);
+                        if (this.settings.fillOption === `value`) { this.data.states.push(margin4); }
+                        this.data.states.push(margin3);
+                        this.data.states.push(margin2);
+                        this.data.states.push(margin1);
+                    } else {
+                        this.data.states.push(this.data.max);
+                    }
+                    sortedRanges = this.data.states;
+                    if (this.settings.fillOption === `value`) {
+                        range = this.svgLinear.selectAll(`rect.range`).data(sortedRanges);
+                        range.enter().append(`rect`).attr(`class`, (d: number, i: number): string => { return rangeLiteral + i; });
+                    } else {
+                        if (this.settings.Orientation === `Horizontal`) {
+                            range = this.svgLinear.append(`rect`).classed(`rectRange`, true).data(sortedRanges);
+                            range.enter().append("rect");
+                        }
+                    }
+                    let measureHeight: number;
+                    let measureYPos: number;
+                    if (categoryFlag === 0 && this.settings.showColor) {
+                        const zoneLen: number = this.colorsGlobal.length;
+                        for (let index: number = 0; index < zoneLen; index++) {
+                            colors.push(this.colorsGlobal[index]);
+                            offSetValue.push(this.data.states[index]);
+                        }
+                        if (this.settings.fillOption === `value`) {
+                            const constID: number = 3;
+                            const context: this = this;
+                            range.style(`fill`, (d: number, i: number): string => {
+                                gradient = context.svgLinear.append("svg:linearGradient");
+                                gradient.attr("id", `gradient${(constID + i)}`)
+                                    .classed("gradientSVG", true)
+                                    .attr("x1", "100%")
+                                    .attr("y1", "0%")
+                                    .attr("x2", "100%")
+                                    .attr("y2", "100%")
+                                    .attr("spreadMethod", "pad");
+                                gradient.append("stop").attr("offset", "0%")
+                                    .attr("stop-color", context.getDarkShade(colors[i], 0.5)).attr("stop-opacity", 1);
+                                gradient.append("stop").attr("offset", "100%")
+                                    .attr("stop-color", colors[i]).attr("stop-opacity", 1);
+
+                                return `url(#gradient${(constID + i)})`;
+                            });
+                        } else {
+                            let context: this = this;
+                            range.style("fill", (): string => {
+                                gradient = context.svgLinear.append("svg:linearGradient");
+                                gradient.attr("id", `gradient1`)
+                                    .classed("gradientSVG", true)
+                                    .attr("spreadMethod", "pad");
+                                gradient.append("stop")
+                                    .attr("offset", `${offSetValue[3]}%`)
+                                    .attr("stop-color", colors[3])
+                                    .attr("stop-opacity", 1);
+                                gradient.append("stop")
+                                    .attr("offset", `${offSetValue[2]}%`)
+                                    .attr("stop-color", colors[2])
+                                    .attr("stop-opacity", 1);
+                                gradient.append("stop")
+                                    .attr("offset", `${offSetValue[1]}%`)
+                                    .attr("stop-color", colors[1])
+                                    .attr("stop-opacity", 1);
+
+                                return `url(#gradient1)`;
+                            });
+                        }
+                        measureHeight = modHeight / 2;
+                        measureYPos = modHeight / 4;
+
+                    } else {
+                        gradient = this.svgLinear.append("svg:linearGradient");
+                        gradient.attr("id", "gradient2")
+                            .classed("gradientSVG", true)
+                            .attr("x1", "100%")
+                            .attr("y1", "0%")
+                            .attr("x2", "100%")
+                            .attr("y2", "100%")
+                            .attr("spreadMethod", "pad");
+                        gradient.append("stop").attr("offset", "0%")
+                            .attr("stop-color",
+                                this.getDarkShade(this.settings.ComparisonFillColor, 0.5)).attr("stop-opacity", 1);
+                        gradient.append("stop").attr("offset", "100%")
+                            .attr("stop-color", this.settings.ComparisonFillColor).attr("stop-opacity", 1);
+                        range.style(`fill`, "url(#gradient2)");
+                        measureHeight = modHeight;
+                        measureYPos = 0;
+                    }
+                    range.attr(`x`, xScale(xScale.domain()[0])).attr(`width`, (d: number): number => {
+                        return (xScale(d) - xScale(xScale.domain()[0])) < 0 ? 0 : (xScale(d) - xScale(xScale.domain()[0]));
+                    }) .attr(`height`, modHeight);
+                    gradient = this.svgLinear.append("svg:linearGradient");
+                    gradient.attr("id", "gradient")
+                        .classed("gradientSVG", true)
+                        .attr("x1", "100%")
+                        .attr("y1", "0%")
+                        .attr("x2", "100%")
+                        .attr("y2", "100%")
+                        .attr("spreadMethod", "pad");
+                    gradient.append("stop").attr("offset", "0%").attr("stop-color", this.getDarkShade(measureColor, 0.5)).attr("stop-opacity", 1);
+                    gradient.append("stop").attr("offset", "100%").attr("stop-color", measureColor).attr("stop-opacity", 1);
+                    if (categoryFlag === 0) {
+                        measure = this.svgLinear.append(`rect`).classed(`measure`, true).style(`fill`, "url(#gradient)");
+                        measure.attr(`height`, measureHeight)
+                            .attr(`x`, xScale(xScale.domain()[0]))
+                            .attr(`y`, measureYPos);
+                        if (this.settings.animationToggle) {
+                            measure.attr("width", 0).transition().duration(this.settings.animationTime * 1000)
+                                .attr(`width`, xScale(this.data.actual) - xScale(xScale.domain()[0]) < 0 ?
+                                 0 : xScale(this.data.actual) - xScale(xScale.domain()[0]));
+                        } else {
+                            measure.attr(`width`, xScale(this.data.actual) - xScale(xScale.domain()[0]) < 0 ?
+                                0 : xScale(this.data.actual) - xScale(xScale.domain()[0]));
+                        }
+                    } else if (categoryFlag === 1) {
+                        measure2 = this.svgLinear.selectAll(`rect.measure`).data(sortedMeasure);
+                        measure2.enter().append(`rect`).attr("class", "measure").attr(`id`, (d: number, index: number): string => {
+                                return `measureId${index}`;
+                            });
                         const constID: number = 3;
                         const context: this = this;
-                        range.style(`fill`, function (d: number, i: number): string {
-                            gradient = context.svgLinear.append('svg:linearGradient');
-                            gradient.attr('id', `gradient${(constID + i)}`)
-                                .classed('gradientSVG', true)
-                                .attr('x1', '100%')
-                                .attr('y1', '0%')
-                                .attr('x2', '100%')
-                                .attr('y2', '100%')
-                                .attr('spreadMethod', 'pad');
-                            gradient.append('stop').attr('offset', '0%')
-                                .attr('stop-color', context.getDarkShade(colors[i], 0.5)).attr('stop-opacity', 1);
-                            gradient.append('stop').attr('offset', '100%')
-                                .attr('stop-color', colors[i]).attr('stop-opacity', 1);
+                        measureYPos = modHeight / 4;
+                        measure2.style(`fill`, (d: number, index: number): string => {
+                            gradient = context.svgLinear.append("svg:linearGradient");
+                            gradient.attr("id", `gradientM${(constID + index)}`)
+                                .classed("gradientSVG", true)
+                                .attr("x1", "100%")
+                                .attr("y1", "0%")
+                                .attr("x2", "100%")
+                                .attr("y2", "100%")
+                                .attr("spreadMethod", "pad");
+                            gradient.append("stop").attr("offset", "0%").attr("stop-color", context.getDarkShade(
+                                legendColor[index], 0.5)).attr("stop-opacity", 1);
+                            gradient.append("stop").attr("offset", "100%")
+                                .attr("stop-color", legendColor[index]).attr("stop-opacity", 1);
 
-                            return `url(#gradient${(constID + i)})`;
+                            return `url(#gradientM${(constID + index)})`;
                         });
-                    } else {
-                        let context: this;
-                        context = this;
-                        range.style('fill', function (): string {
-                            gradient = context.svgLinear.append('svg:linearGradient');
-                            gradient.attr('id', `gradient1`)
-                                .classed('gradientSVG', true)
-                                .attr('spreadMethod', 'pad');
-                            gradient.append('stop')
-                                .attr('offset', `${offSetValue[3]}%`)
-                                .attr('stop-color', colors[3])
-                                .attr('stop-opacity', 1);
-                            gradient.append('stop')
-                                .attr('offset', `${offSetValue[2]}%`)
-                                .attr('stop-color', colors[2])
-                                .attr('stop-opacity', 1);
-                            gradient.append('stop')
-                                .attr('offset', `${offSetValue[1]}%`)
-                                .attr('stop-color', colors[1])
-                                .attr('stop-opacity', 1);
-
-                            return `url(#gradient1)`;
-                        });
-                    }
-                    measureHeight = modHeight / 2;
-                    measureYPos = modHeight / 4;
-
-                } else {
-                    gradient = this.svgLinear.append('svg:linearGradient');
-
-                    gradient.attr('id', 'gradient2')
-                        .classed('gradientSVG', true)
-                        .attr('x1', '100%')
-                        .attr('y1', '0%')
-                        .attr('x2', '100%')
-                        .attr('y2', '100%')
-                        .attr('spreadMethod', 'pad');
-                    gradient.append('stop').attr('offset', '0%')
-                        .attr('stop-color', this.getDarkShade(this.settings.ComparisonFillColor, 0.5)).attr('stop-opacity', 1);
-                    gradient.append('stop').attr('offset', '100%')
-                        .attr('stop-color', this.settings.ComparisonFillColor).attr('stop-opacity', 1);
-
-                    range.style(`fill`, 'url(#gradient2)');
-                    measureHeight = modHeight;
-                    measureYPos = 0;
-                }
-                range
-                    .attr(`x`, xScale(xScale.domain()[0]))
-                    .attr(`width`, function (d: number): number {
-
-                        let width3: number;
-                        width3 = (xScale(d) - xScale(xScale.domain()[0])) < 0 ? 0 : (xScale(d) - xScale(xScale.domain()[0]));
-
-                        return width3;
-                    })
-                    .attr(`height`, modHeight);
-
-                gradient = this.svgLinear.append('svg:linearGradient');
-
-                gradient.attr('id', 'gradient')
-                    .classed('gradientSVG', true)
-                    .attr('x1', '100%')
-                    .attr('y1', '0%')
-                    .attr('x2', '100%')
-                    .attr('y2', '100%')
-                    .attr('spreadMethod', 'pad');
-                gradient.append('stop').attr('offset', '0%')
-                    .attr('stop-color', this.getDarkShade(measureColor, 0.5)).attr('stop-opacity', 1);
-                gradient.append('stop').attr('offset', '100%')
-                    .attr('stop-color', measureColor).attr('stop-opacity', 1);
-
-                //Main measure
-                if (categoryFlag === 0) {
-                    measure = this.svgLinear
-                        .append(`rect`)
-                        .classed(`measure`, true)
-                        .style(`fill`, 'url(#gradient)');
-                    measure.attr(`height`, measureHeight)
-                        .attr(`x`, xScale(xScale.domain()[0]))
-                        .attr(`y`, measureYPos);
-                    if (this.settings.animationToggle) {
-                        measure.attr('width', 0)
-                            .transition().duration(this.settings.animationTime * 1000)
-                            .attr(`width`, xScale(this.data.actual) - xScale(xScale.domain()[0]) < 0 ?
-                                0 : xScale(this.data.actual) - xScale(xScale.domain()[0]));
-                    } else {
-                        measure.attr(`width`, xScale(this.data.actual) - xScale(xScale.domain()[0]) < 0 ?
-                            0 : xScale(this.data.actual) - xScale(xScale.domain()[0]));
-                    }
-                } else if (categoryFlag === 1) {
-                    measure2 = this.svgLinear.selectAll(`rect.measure`)
-                        .data(sortedMeasure);
-                    measure2.enter()
-                        .append(`rect`)
-                        .attr('class', 'measure')
-                        .attr(`id`, function (d: number, index: number): string {
-                            return `measureId${index}`;
-                        });
-                    const constID: number = 3;
-                    const context: this = this;
-                    measureYPos = modHeight / 4;
-                    measure2.style(`fill`, function (d: number, index: number): string {
-                        gradient = context.svgLinear.append('svg:linearGradient');
-                        gradient.attr('id', `gradientM${(constID + index)}`)
-                            .classed('gradientSVG', true)
-                            .attr('x1', '100%')
-                            .attr('y1', '0%')
-                            .attr('x2', '100%')
-                            .attr('y2', '100%')
-                            .attr('spreadMethod', 'pad');
-                        gradient.append('stop').attr('offset', '0%')
-                            .attr('stop-color', context.getDarkShade(
-                                legendColor[index], 0.5)).attr('stop-opacity', 1);
-                        gradient.append('stop').attr('offset', '100%')
-                            .attr('stop-color', legendColor[index]).attr('stop-opacity', 1);
-
-                        return `url(#gradientM${(constID + index)})`;
-                    });
-                    measure2
-                        .attr(`height`, function (d: number, index: number): number {
-
+                        measure2.attr(`height`, (d: number, index: number): number => {
                             return measureHeight / (index / legendLength + 1);
-                        })
-                        .attr('y', function (d: number, index: number): number {
-
+                            }).attr("y", (d: number, index: number): number => {
                             return (measureYPos + (2 * measureYPos - (measureHeight / (index / legendLength + 1))) / 2);
-                        })
-                        .attr(`x`, xScale(xScale.domain()[0]));
-                    if (this.settings.animationToggle) {
-                        measure2.attr('width', function (d: number, index: number): number {
-                            return 0;
-                        })
-                            .transition().duration(this.settings.animationTime * 1000)
-                            .attr(`width`, function (d: number, index: number): number {
-                                let width2: number;
-                                width2 = xScale(d) - xScale(xScale.domain()[0]) < 0 ?
-                                    0 : xScale(d) - xScale(xScale.domain()[0]);
-
-                                return width2;
+                            }).attr(`x`, xScale(xScale.domain()[0]));
+                        if (this.settings.animationToggle) {
+                            measure2.attr("width", (d: number, index: number): number => { return 0;})
+                                .transition().duration(this.settings.animationTime * 1000)
+                                .attr(`width`, (d: number, index: number): number => {
+                                    return xScale(d) - xScale(xScale.domain()[0]) < 0 ? 0 : xScale(d) - xScale(xScale.domain()[0]);
+                                });
+                        } else {
+                            measure2.attr(`width`, (d: number, index: number): number => {
+                               return xScale(d) - xScale(xScale.domain()[0]) < 0 ? 0 : xScale(d) - xScale(xScale.domain()[0]);
                             });
-                    } else {
-                        measure2.attr(`width`, function (d: number, index: number): number {
-                            let width2: number;
-                            width2 = xScale(d) - xScale(xScale.domain()[0]) < 0 ?
-                                0 : xScale(d) - xScale(xScale.domain()[0]);
-
-                            return width2;
-                        });
+                        }
                     }
-                }
-                if (this.data.max <= this.data.min) {
-                    measure.style(`display`, `none`);
-                }
-
-                let hMarker: number;
-                let hMarkerMin: number;
-                let hMarkerMax: number;
-                hMarker = xScale(this.data.target);
-                hMarkerMin = xScale(minRangeValue);
-                hMarkerMax = xScale(maxRangeValue);
-                let markerLine: d3.Selection<SVGElement>;
-                markerLine = this.svgLinear
+                    if (this.data.max <= this.data.min) {
+                        if (measure === undefined) {
+                            $(".rectRange").remove();
+                            $(".measure").remove();
+                            this.nullValueError();
+                        }
+                        measure.style(`display`, `none`);
+                    }
+                    let hMarker: number = xScale(this.data.target);
+                    let hMarkerMin: number =  xScale(minRangeValue);
+                    let hMarkerMax: number = xScale(maxRangeValue);
+                    let marker_select = d3.select(".marker");
+                    let markerTriangle_select = d3.select(".markerTriangle");
+                    let markerLine: d3.Selection<SVGElement> = this.svgLinear
                     .append(`line`)
                     .classed(`marker`, true)
                     .style(`stroke`, `brown`)
                     .attr({
                         x1: hMarker,
-                        y1: 0,
                         x2: hMarker,
+                        y1: 0,
                         y2: modHeight
                     });
-                markerLine.on('mouseover', function (): void {
-                    d3.select('.marker').attr('stroke-width', '5');
-                });
-                markerLine.on('mouseout', function (): void {
-                    d3.select('.marker').attr('stroke-width', '1');
-                });
-                /* Marker code starts here */
-                if (this.settings.legendNewPosition === 'aboveMarker') {
-                    let targetMarker: d3.Selection<SVGElement>;
-                    if (categoryFlag === 1) {
-                        targetMarker = this.svg.append('polygon')
-                            .classed('markerTriangle', true)
-                            .attr({
-                                points: `${hMarker - 4},${-8} ${hMarker + 4},${-8} ${hMarker}, ${-2}`
-                            }).style('fill', 'brown')
-                            .attr('stroke', 'brown')
-                            .attr('stroke-width', 3);
-                    } else {
-                        targetMarker = this.svg.append('polygon')
-                            .classed('markerTriangle', true)
-                            .attr({
-                                points: `${hMarker - 4},${-(8)} ${hMarker + 4},
+                    markerLine.on("mouseover", (): void => {marker_select.attr("stroke-width", "5"); });
+                    markerLine.on("mouseout", (): void => { marker_select.attr("stroke-width", "1"); });
+                    if (this.settings.legendNewPosition === "aboveMarker") {
+                        let targetMarker: d3.Selection<SVGElement>;
+                        if (categoryFlag === 1) {
+                            targetMarker = this.svg.append("polygon")
+                                .classed("markerTriangle", true)
+                                .attr({
+                                    points: `${hMarker - 4},${-8} ${hMarker + 4},${-8} ${hMarker}, ${-2}`
+                                }).style("fill", "brown")
+                                .attr("stroke", "brown")
+                                .attr("stroke-width", 3);
+                        } else {
+                            targetMarker = this.svg.append("polygon")
+                                .classed("markerTriangle", true)
+                                .attr({
+                                    points: `${hMarker - 4},${-(8)} ${hMarker + 4},
                                 ${-(8)} ${hMarker}, ${- 2}`
-                            }).style('fill', 'brown')
-                            .attr('stroke', 'brown')
-                            .attr('stroke-width', 3);
-                    }
-                    targetMarker.on('mouseover', function (): void {
-                        d3.select('.markerTriangle').attr('stroke-width', 5);
-                        d3.select('.marker').attr('stroke-width', '5');
-                    });
-                    targetMarker.on('mouseout', function (): void {
-                        d3.select('.markerTriangle').attr('stroke-width', '3');
-                        d3.select('.marker').attr('stroke-width', '1');
-                    });
-                    markerLine.on('mouseover', function (): void {
-                        d3.select('.markerTriangle').attr('stroke-width', 5);
-                        d3.select('.marker').attr('stroke-width', '5');
-                    });
-                    markerLine.on('mouseout', function (): void {
-                        d3.select('.markerTriangle').attr('stroke-width', '3');
-                        d3.select('.marker').attr('stroke-width', '1');
-                    });
-                }
-                /* Marker code ends here */
-                this.svgLinear.selectAll(`line.markerTilt`).remove();
-                // best in class
-                if (this.data.bestSet) {
-                    const bestMarker: number = xScale(this.data.best);
-                    this.svgLinear
-                        .append(`line`)
-                        .classed(`bestMarker`, true)
-                        .style('stroke-dasharray', '5, 2')
-                        .style(`stroke`, `#000`)
-                        .attr({
-                            x1: bestMarker,
-                            y1: 0,
-                            x2: bestMarker,
-                            y2: modHeight
+                                }).style("fill", "brown")
+                                .attr("stroke", "brown")
+                                .attr("stroke-width", 3);
+                        }
+                        targetMarker.on("mouseover", (): void => {
+                            markerTriangle_select.attr("stroke-width", 5);
+                            marker_select.attr("stroke-width", "5");
                         });
-                    // best marker small tick
-                    if (this.settings.showScale) {
+                        targetMarker.on("mouseout", (): void => {
+                            markerTriangle_select.attr("stroke-width", "3");
+                            marker_select.attr("stroke-width", "1");
+                        });
+                        markerLine.on("mouseover", (): void => {
+                            markerTriangle_select.attr("stroke-width", 5);
+                            marker_select.attr("stroke-width", "5");
+                        });
+                        markerLine.on("mouseout", (): void => {
+                            markerTriangle_select.attr("stroke-width", "3");
+                            marker_select.attr("stroke-width", "1");
+                        });
+                    }
+                    this.svgLinear.selectAll(`line.markerTilt`).remove();
+                    if (this.data.bestSet) {
+                        const bestMarker: number = xScale(this.data.best);
                         this.svgLinear
                             .append(`line`)
-                            .classed(`markerTilt`, true)
-                            .style('stroke-dasharray', '5, 2')
+                            .classed(`bestMarker`, true)
+                            .style("stroke-dasharray", "5, 2")
                             .style(`stroke`, `#000`)
                             .attr({
                                 x1: bestMarker,
-                                y1: modHeight,
                                 x2: bestMarker,
-                                y2: (modHeight + 10)
+                                y1: 0,
+                                y2: modHeight
                             });
-                    }
-                }
-
-                if (this.settings.showScale) {
-                    this.svgLinear
-                        .append(`line`)
-                        .classed(`markerTilt`, true)
-                        .style(`stroke`, `#000`)
-                        .attr({
-                            x1: hMarker,
-                            y1: modHeight,
-                            x2: hMarker,
-                            y2: (modHeight + 10)
-                        });
-                }
-
-                if (this.settings.showRange) {
-                    let strokeColor: string;
-                    strokeColor = this.settings.RangeTicksColor;
-                    this.svgLinear
-                        .append(`line`)
-                        .classed(`markermin`, true)
-                        .style(`stroke`, strokeColor)
-                        .style('stroke-width', `${this.settings.rangeWidth}px`)
-                        .attr({
-                            x1: hMarkerMin,
-                            y1: 0,
-                            x2: hMarkerMin,
-                            y2: modHeight
-                        })
-                        .append('title')
-                        .text(minRangeValue);
-                    if (minRangeValue < maxRangeValue) {
-                    this.svgLinear
-                        .append(`line`)
-                        .classed(`markermax`, true)
-                        .style(`stroke`, strokeColor)
-                        .style('stroke-width', `${this.settings.rangeWidth}px`)
-                        .attr({
-                            x1: hMarkerMax,
-                            y1: 0,
-                            x2: hMarkerMax,
-                            y2: modHeight
-                        })
-                        .append('title')
-                        .text(maxRangeValue);
-                    }
-                    if (this.settings.rangeStyle === 'dotted') {
-                        this.svgLinear.selectAll('.markermin, .markermax')
-                            .style('stroke-dasharray', ('1,1'));
-
-                    } else if (this.settings.rangeStyle === 'dashed') {
-                        this.svgLinear.selectAll('.markermin, .markermax')
-                            .style('stroke-dasharray', ('3, 3'));
-                    } else {
-                        this.svgLinear.selectAll('.markermin, .markermax')
-                            .style('stroke-dasharray', (''));
-                    }
-                }
-
-                translateVal = `translate(0,${(modHeight + 15)} )`;
-                axisFunction = xAxis;
-                className = 'lg_xLabels';
-            } else {
-                offSetValue = [];
-                let margin1: number;
-                let margin2: number;
-                let margin3: number;
-                let margin4: number;
-                this.data.min = yScale.domain()[0];
-                this.data.max = yScale.domain()[1];
-                minRangeValue = (this.settings.MinRangeValue === null
-                    || this.settings.MinRangeValue < this.data.min
-                    || this.settings.MinRangeValue > this.data.max) ? this.data.min : this.settings.MinRangeValue;
-                maxRangeValue = (this.settings.MaxRangeValue === null
-                    || this.settings.MaxRangeValue < this.data.min
-                    || this.settings.MaxRangeValue > this.data.max) ? this.data.max : this.settings.MaxRangeValue;
-                let yAxis: d3.svg.Axis;
-                yAxis = d3.svg.axis().scale(yScale)
-                    .tickFormat(actualFormatter.format)
-                    .orient('right');
-                const leftPos: number = -(viewport.height / 11);
-                let measureLeftPos: number;
-                let measureWidth: number;
-                let comparsionWidth: number;
-                this.svgLinear.selectAll(`rect.range`).remove();
-                this.data.max = yScale.domain()[1];
-
-                if (this.settings.fillOption === `value`) {
-                    const range12Max: number = Math.max(this.settings.range1, this.settings.range2);
-                    const range123Max: number = Math.max(this.settings.range1, this.settings.range2, this.settings.range3);
-                    this.settings.range1 = this.settings.range1 === null ? null
-                        : this.settings.range1 < this.data.min ? null
-                            : this.settings.range1 > this.data.max ? null : this.settings.range1;
-                    this.settings.range2 = this.settings.range2 === null ? null
-                        : this.settings.range2 < this.settings.range1 ? this.settings.range1
-                            : this.settings.range2 > this.data.max ? null : this.settings.range2;
-                    this.settings.range3 = this.settings.range3 === null ? null
-                        : this.settings.range3 < range12Max ? range12Max
-                            : this.settings.range3 > this.data.max ? null : this.settings.range3;
-                    this.settings.range4 = this.settings.range4 === null ? null
-                        : this.settings.range4 < range123Max ?
-                            range123Max : this.settings.range4 > this.data.max ? null : this.settings.range4;
-                    margin1 = this.settings.range1;
-                    margin2 = this.settings.range2;
-                    margin3 = this.settings.range3;
-                    margin4 = this.settings.range4;
-                } else {
-                    if (this.settings.percentageVal1 > 100) {
-                        this.settings.percentageVal1 = 100;
-                        this.settings.percentageVal2 = 0;
-                        this.settings.percentageVal3 = 0;
-                    } else {
-                        if (this.settings.percentageVal2 > (100 - this.settings.percentageVal1)) {
-                            this.settings.percentageVal2 = 100 - this.settings.percentageVal1;
-                            this.settings.percentageVal3 = 0;
-                        } else {
-                            if (this.settings.percentageVal3 > (100 - this.settings.percentageVal1 - this.settings.percentageVal2)) {
-                                this.settings.percentageVal3 = 100 - this.settings.percentageVal1 - this.settings.percentageVal2;
-                            }
+                        if (this.settings.showScale) {
+                            this.svgLinear
+                                .append(`line`)
+                                .classed(`markerTilt`, true)
+                                .style("stroke-dasharray", "5, 2")
+                                .style(`stroke`, `#000`)
+                                .attr({
+                                    x1: bestMarker,
+                                    x2: bestMarker,
+                                    y1: modHeight,
+                                    y2: (modHeight + 10)
+                                });
                         }
                     }
-                    margin1 = this.settings.percentageVal1;
-                    margin2 = margin1 + this.settings.percentageVal2;
-                    margin3 = margin2 + this.settings.percentageVal3;
-                }
-                this.data.states = [];
-                if (categoryFlag === 0 && this.settings.showColor) {
-                    this.data.states.push(this.data.max);
-                    if (this.settings.fillOption === `value`) {
-                        this.data.states.push(margin4);
-                    }
-                    this.data.states.push(margin3);
-                    this.data.states.push(margin2);
-                    this.data.states.push(margin1);
-                } else {
-                    this.data.states.push(this.data.max);
-                }
-                sortedRanges = this.data.states;
-                let sortedMeasure2: number[];
-                sortedMeasure2 = [];
-                for (let index: number = 0; index < actualValue.length; index++) {
-                    sortedMeasure2[index] = actualValue[actualValue.length - index - 1];
-                }
-                if (this.settings.fillOption === 'value') {
-                    range = this.svgLinear.selectAll(`rect.range`)
-                        .data(sortedRanges);
-                    range.enter()
-                        .append(`rect`)
-                        .attr(`class`, function (d: number, i: number): string {
-                            return rangeLiteral + i;
-                        });
-                } else {
-                    range = this.svgLinear.append(`rect`)
-                        .classed(`rectRange`, true)
-                        .data(sortedRanges);
-                    range.enter()
-                        .append('rect');
-                }
-                if (this.settings.showColor) {
-                    const zoneLen: number = this.colorsGlobal.length;
-                    for (let index: number = 0; index < zoneLen; index++) {
-                        colors.push(this.colorsGlobal[index]);
-                        offSetValue.push(this.data.states[index]);
-                    }
-                    if (this.settings.fillOption === `value`) {
-                        const constID: number = 3;
-                        const context: this = this;
-                        range.style(`fill`, function (d: number, index: number): string {
-                            gradient = context.svgLinear.append('svg:linearGradient');
-                            gradient.attr('id', `gradient${(constID + index)}`)
-                                .classed('gradientSVG', true)
-                                .attr('x1', '100%')
-                                .attr('y1', '100%')
-                                .attr('x2', '0%')
-                                .attr('y2', '100%')
-                                .attr('spreadMethod', 'pad');
-                            gradient.append('stop').attr('offset', '0%')
-                                .attr('stop-color', context.getDarkShade(context.colorsGlobal[index], 0.5)).attr('stop-opacity', 1);
-                            gradient.append('stop').attr('offset', '100%')
-                                .attr('stop-color', context.colorsGlobal[index]).attr('stop-opacity', 1);
-
-                            return `url(#gradient${(constID + index)})`;
-                        });
-                    } else {
-                        let context: this;
-                        context = this;
-                        range.style('fill', function (d: number, index: number): string {
-
-                            if (index === 0) {
-                                gradient = context.svgLinear.append('svg:linearGradient');
-                                gradient.attr('id', `gradient1`)
-                                    .classed('gradientSVG', true)
-                                    .attr('x1', '100%')
-                                    .attr('y1', '0%')
-                                    .attr('x2', '100%')
-                                    .attr('y2', '100%')
-                                    .attr('spreadMethod', 'pad');
-                            } else {
-                                gradient.append('stop')
-                                    .attr('offset', `${offSetValue[4 - index]}%`)
-                                    .attr('stop-color', context.colorsGlobal[4 - index])
-                                    .attr('stop-opacity', 1);
-                            }
-
-                            return `url(#gradient1)`;
-                        });
-                    }
-                    measureLeftPos = leftPos + modHeight / 4;
-                    measureWidth = modHeight / 2;
-                    comparsionWidth = modHeight / 6;
-                } else {
-                    gradient = this.svgLinear.append('svg:linearGradient');
-
-                    gradient.attr('id', 'gradient2')
-                        .classed('gradientSVG', true)
-                        .attr('x1', '100%')
-                        .attr('y1', '100%')
-                        .attr('x2', '0%')
-                        .attr('y2', '100%')
-                        .attr('spreadMethod', 'pad');
-                    gradient.append('stop').attr('offset', '0%')
-                        .attr('stop-color', this.getDarkShade(this.settings.ComparisonFillColor, 0.5)).attr('stop-opacity', 1);
-                    gradient.append('stop').attr('offset', '100%')
-                        .attr('stop-color', this.settings.ComparisonFillColor).attr('stop-opacity', 1);
-
-                    range.style(`fill`, 'url(#gradient2)');
-                    measureLeftPos = leftPos;
-                    measureWidth = modHeight;
-                    comparsionWidth = modHeight / 3;
-                }
-                const visualContext: this = this;
-                range.attr(`width`, modHeight)
-                    .attr(`height`, function (d: number): number {
-                        return (yScale(yScale.domain()[0]) - yScale(d)) < 0
-                            ? 0 : (yScale(yScale.domain()[0]) - yScale(d));
-                    })
-                    .attr(`x`, leftPos)
-                    .attr(`y`, -yScale(yScale.domain()[0]))
-                    .attr(`transform`, 'rotate(180)');
-                gradient = this.svgLinear.append('svg:linearGradient');
-
-                gradient.attr('id', 'gradient')
-                    .classed('gradientSVG', true)
-                    .attr('x1', '100%')
-                    .attr('y1', '100%')
-                    .attr('x2', '0%')
-                    .attr('y2', '100%')
-                    .attr('spreadMethod', 'pad');
-                gradient.append('stop').attr('offset', '0%')
-                    .attr('stop-color', this.getDarkShade(measureColor, 0.5)).attr('stop-opacity', 1);
-                gradient.append('stop').attr('offset', '100%').attr('stop-color', measureColor).attr('stop-opacity', 1);
-
-                if (categoryFlag === 0) {
-                    measure = this.svgLinear
-                        .append(`rect`)
-                        .classed(`measure`, true)
-                        .style(`fill`, 'url(#gradient)')
-                        .attr(`transform`, 'rotate(180)');
-                    measure
-                        .attr(`width`, measureWidth)
-                        .attr(`x`, measureLeftPos)
-                        .attr(`y`, -yScale(yScale.domain()[0]));
-                    if (this.settings.animationToggle) {
-                        measure.attr(`height`, 0)
-                            .transition().duration(this.settings.animationTime * 1000)
-                            .attr(`height`, yScale(yScale.domain()[0]) - yScale(this.data.actual));
-                    } else {
-                        measure.attr(`height`, yScale(yScale.domain()[0]) - yScale(this.data.actual));
-                    }
-                } else {
-                    measure2 = this.svgLinear.selectAll(`rect.measure`)
-                        .data(sortedMeasure2);
-                    measure2.enter()
-                        .append(`rect`)
-                        .attr('class', 'measure')
-                        .attr(`id`, function (d: number, index: number): string {
-                            return `measureId${index}`;
-                        });
-                    const constID: number = 3;
-                    const context: this = this;
-                    measure2.style(`fill`, function (d: number, index: number): string {
-                        gradient = context.svgLinear.append('svg:linearGradient');
-                        gradient.attr('id', `gradientM${(constID + index)}`)
-                            .classed('gradientSVG', true)
-                            .attr('x1', '100%')
-                            .attr('y1', '100%')
-                            .attr('x2', '0%')
-                            .attr('y2', '100%')
-                            .attr('spreadMethod', 'pad');
-                        gradient.append('stop').attr('offset', '0%')
-                            .attr('stop-color', context.getDarkShade(
-                                legendColor[index], 0.5)).attr('stop-opacity', 1);
-                        gradient.append('stop').attr('offset', '100%')
-                            .attr('stop-color', legendColor[index]).attr('stop-opacity', 1);
-
-                        return `url(#gradientM${(constID + index)})`;
-                    });
-                    measure2.attr(`width`, function (d: number, index: number): number {
-                        return measureWidth / (index / legendLength + 1);
-                    })
-                        .attr(`x`, function (d: number, index: number): number {
-
-                            return ((1.085 * measureLeftPos - (measureWidth / (index / legendLength + 1))) / 2);
-                        })
-                        .attr(`y`, -yScale(yScale.domain()[0]))
-                        .attr(`transform`, 'rotate(180)');
-                    if (this.settings.animationToggle) {
-                        measure2.attr(`height`, function (d: number): number {
-                            return 0;
-                        })
-                            .transition().duration(this.settings.animationTime * 1000)
-                            .attr(`height`, function (d: number): number {
-                                return (yScale(yScale.domain()[0]) - yScale(d)) < 0
-                                    ? 0 : (yScale(yScale.domain()[0]) - yScale(d));
-                            });
-                    } else {
-                        measure2.attr(`height`, function (d: number): number {
-                            return (yScale(yScale.domain()[0]) - yScale(d)) < 0
-                                ? 0 : (yScale(yScale.domain()[0]) - yScale(d));
-                        });
-                    }
-                }
-
-                this.trendValue1.style(`text-align`, `left`);
-                this.trendValue2.style(`text-align`, `left`);
-
-                $('.data_percentagev').hide();
-                $('.data_totalv').hide();
-                $(`.trendtext1v`).hide();
-                $(`.trendtext2v`).hide();
-                vDataLabel = d3.select('.linearSVG').append('g').classed('LG_verticalDataLabel', true);
-                let difference: number;
-                const diff: number = 150; // used to separate lineargauge and texts (actual and percentagevalues).
-                const actualValLength: number = 6; // increase the distance from lineargauge if the
-                if (this.settings.labelDisplayUnits === 1) {
-                    difference = diff + this.data.actual.toString().length * actualValLength;
-                } else {
-                    difference = diff;
-                }
-
-                let availableWidth: number ;
-                const adjustFactor : number = 1.55;
-                availableWidth = parseInt($('.linearSVG').css('marginLeft').toString(), 10) - measureWidth - 10;
-                const widthAdjust: number = 0.3; // used to adjust the elipses of actualvalue and percentagevalue
-                if (this.settings.showlabel) {
-                    const textPropsv: TextProperties = {
-                        fontSize: `${this.settings.fontSize}px`,
-                        fontFamily: this.settings.fontFamily,
-                        text: actualVal
-                    };
-                    let updatedTextv: string;
-                    updatedTextv = textMeasurementService.getTailoredTextOrDefault(textPropsv, availableWidth );
-                //actual data vertical
-                    vDataLabel.append('text')
-                        .classed('data_totalv', true)
-                        .attr(`transform`, `${`translate(`}${(modHeight - adjustFactor * difference)}${`,`}${(svgheight - 20)} )`)
-                        .style(`fill`, this.settings.DataColor)
-                        .style(`font-family`, this.settings.fontFamily)
-                        .style(`font-size`, `${this.settings.fontSize}px`)
-                        .text(updatedTextv)
-                        .append('title').text(actualTooltip);
-                } else {
-                    $('.data_totalv').hide();
-                }
-                if (this.settings.showPercentage) {
-                    const textPropspercen: TextProperties = {
-                        fontSize: `${this.settings.fontSize}px`,
-                        fontFamily: this.settings.fontFamily,
-                        text: `${percentageVal.toString()}%`
-                    };
-                     //percantage data vertical
-                    let updatedTextpercen: string;
-                    updatedTextpercen = textMeasurementService.getTailoredTextOrDefault(textPropspercen, availableWidth );
-                    vDataLabel.append('text').text(updatedTextpercen)
-                        .classed('data_percentagev', true)
-                        .attr(`transform`, `translate(${(modHeight - adjustFactor * difference)}${`,`}${(svgheight - 50)} )`)
-                        .style(`fill`, this.settings.PercentageDataColor)
-                        .style(`font-family`, this.settings.percentagefontFamily)
-                        .style(`font-size`, `${this.settings.percentagefontSize}px`)
-                        .append('title').text( `${percentageVal}%`);
-                } else {
-                    $('.data_percentagev').hide();
-                }
-                if (this.data.max <= this.data.min) {
-                    measure.style(`display`, `none`);
-                }
-                // Remove the Actual value data label if it is going beyond DOM
-                const eleLabel: JQuery = $('.LG_verticalDataLabel');
-                const eleTrend: JQuery = $('.lg_imagetab');
-                if (eleLabel && eleLabel.length && eleLabel[0]) {
-                    // tslint:disable-next-line:no-any
-                    const domPositionLabel: any = eleLabel[0].getBoundingClientRect();
-                    if (domPositionLabel.x < 0) {
-                        $('.LG_verticalDataLabel text').remove();
-                    }
-                }
-
-                let vMarkerMin: number;
-                let vMarkerMax: number;
-                vMarker = yScale(this.data.target);
-                vMarkerMin = yScale(minRangeValue);
-                vMarkerMax = yScale(maxRangeValue);
-                let markerLine: d3.Selection<SVGElement>;
-                markerLine = this.svgLinear
-                    .append(`line`)
-                    .classed(`marker`, true)
-                    .style(`stroke`, `brown`)
-                    .attr({
-                        x1: 3,
-                        y1: vMarker,
-                        x2: modHeight + 3,
-                        y2: vMarker
-                    });
-                markerLine.on('mouseover', function (): void {
-                    d3.select('.marker').attr('stroke-width', '5');
-                });
-                markerLine.on('mouseout', function (): void {
-                    d3.select('.marker').attr('stroke-width', '1');
-                });
-                /* Marker Code Starts here */
-                if (this.settings.legendNewPosition === 'aboveMarker') {
-                    let targetMarker: d3.Selection<SVGElement>;
-                    targetMarker = this.svg.append('polygon')
-                        .classed('markerTriangle', true)
-                        .attr({
-                            points: `${-5},${vMarker - 4} ${-5},${vMarker + 4} ${3}, ${vMarker}`
-                        }).style('fill', 'brown')
-                        .attr('stroke', 'brown')
-                        .attr('stroke-width', 3);
-                    targetMarker.on('mouseover', function (): void {
-                        d3.select('.markerTriangle').attr('stroke-width', 5);
-                        d3.select('.marker').attr('stroke-width', '5');
-                    });
-                    targetMarker.on('mouseout', function (): void {
-                        d3.select('.markerTriangle').attr('stroke-width', '3');
-                        d3.select('.marker').attr('stroke-width', '1');
-                    });
-                    markerLine.on('mouseover', function (): void {
-                        d3.select('.markerTriangle').attr('stroke-width', 5);
-                        d3.select('.marker').attr('stroke-width', '5');
-                    });
-                    markerLine.on('mouseout', function (): void {
-                        d3.select('.markerTriangle').attr('stroke-width', '3');
-                        d3.select('.marker').attr('stroke-width', '1');
-                    });
-                }
-                /* Marker Code ends here */
-                this.svgLinear.selectAll(`line.markerTilt`).remove();
-                // best in class
-                if (this.data.bestSet) {
-                    const bestMarker: number = yScale(this.data.best);
-                    this.svgLinear
-                        .append(`line`)
-                        .classed(`bestMarker`, true)
-                        .style('stroke-dasharray', '5, 5')
-                        .style(`stroke`, `#000`)
-                        .attr({
-                            x1: 3,
-                            y1: bestMarker,
-                            x2: modHeight + 3,
-                            y2: bestMarker
-                        });
                     if (this.settings.showScale) {
                         this.svgLinear
                             .append(`line`)
                             .classed(`markerTilt`, true)
-                            .style('stroke-dasharray', '5, 5')
+                            .style(`stroke`, `#000`)
+                            .attr({
+                                x1: hMarker,
+                                x2: hMarker,
+                                y1: modHeight,
+                                y2: (modHeight + 10)
+                            });
+                    }
+                    if (this.settings.showRange) {
+                        let strokeColor: string = this.settings.RangeTicksColor;
+                        this.svgLinear
+                            .append(`line`)
+                            .classed(`markermin`, true)
+                            .style(`stroke`, strokeColor)
+                            .style("stroke-width", `${this.settings.rangeWidth}px`)
+                            .attr({
+                                x1: hMarkerMin,
+                                x2: hMarkerMin,
+                                y1: 0,
+                                y2: modHeight
+                            })
+                            .append("title")
+                            .text(minRangeValue);
+                        if (minRangeValue < maxRangeValue) {
+                            this.svgLinear
+                                .append(`line`)
+                                .classed(`markermax`, true)
+                                .style(`stroke`, strokeColor)
+                                .style("stroke-width", `${this.settings.rangeWidth}px`)
+                                .attr({
+                                    x1: hMarkerMax,
+                                    x2: hMarkerMax,
+                                    y1: 0,
+                                    y2: modHeight
+                                })
+                                .append("title")
+                                .text(maxRangeValue);
+                        }
+                        let marker_min_max = this.svgLinear.selectAll(".markermin, .markermax");
+                        if (this.settings.rangeStyle === "dotted") {
+                            marker_min_max
+                                .style("stroke-dasharray", ("1,1"));
+
+                        } else if (this.settings.rangeStyle === "dashed") {
+                            marker_min_max
+                                .style("stroke-dasharray", ("3, 3"));
+                        } else {
+                            marker_min_max
+                                .style("stroke-dasharray", (""));
+                        }
+                    }
+                    translateVal = `translate(0,${(modHeight + 15)} )`;
+                    axisFunction = xAxis;
+                    className = "lg_xLabels";
+                } else {
+                    offSetValue = [];
+                    let margin1: number;
+                    let margin2: number;
+                    let margin3: number;
+                    let margin4: number;
+                    this.data.min = yScale.domain()[0];
+                    this.data.max = yScale.domain()[1];
+                    minRangeValue = (this.settings.MinRangeValue === null
+                        || this.settings.MinRangeValue < this.data.min
+                        || this.settings.MinRangeValue > this.data.max) ? this.data.min : this.settings.MinRangeValue;
+                    maxRangeValue = (this.settings.MaxRangeValue === null
+                        || this.settings.MaxRangeValue < this.data.min
+                        || this.settings.MaxRangeValue > this.data.max) ? this.data.max : this.settings.MaxRangeValue;
+                    let yAxis: d3.svg.Axis= d3.svg.axis().scale(yScale)
+                    .tickFormat(actualFormatter.format)
+                    .orient("right");
+                    const leftPos: number = -(viewport.height / 11);
+                    let measureLeftPos: number;
+                    let measureWidth: number;
+                    let comparsionWidth: number;
+                    this.svgLinear.selectAll(`rect.range`).remove();
+                    this.data.max = yScale.domain()[1];
+                    if (this.settings.fillOption === `value`) {
+                        const range12Max: number = Math.max(this.settings.range1, this.settings.range2);
+                        const range123Max: number = Math.max(this.settings.range1, this.settings.range2, this.settings.range3);
+                        this.settings.range1 = this.settings.range1 === null ? null : this.settings.range1 < this.data.min ? null
+                                : this.settings.range1 > this.data.max ? null : this.settings.range1;
+                        this.settings.range2 = this.settings.range2 === null ? null : this.settings.range2 < this.settings.range1 ? this.settings.range1
+                                : this.settings.range2 > this.data.max ? null : this.settings.range2;
+                        this.settings.range3 = this.settings.range3 === null ? null
+                            : this.settings.range3 < range12Max ? range12Max
+                                : this.settings.range3 > this.data.max ? null : this.settings.range3;
+                        this.settings.range4 = this.settings.range4 === null ? null
+                            : this.settings.range4 < range123Max ?
+                                range123Max : this.settings.range4 > this.data.max ? null : this.settings.range4;
+                        margin1 = this.settings.range1;
+                        margin2 = this.settings.range2;
+                        margin3 = this.settings.range3;
+                        margin4 = this.settings.range4;
+                    } else {
+                        if (this.settings.percentageVal1 > 100) {
+                            this.settings.percentageVal1 = 100;
+                            this.settings.percentageVal2 = 0;
+                            this.settings.percentageVal3 = 0;
+                        } else {
+                            if (this.settings.percentageVal2 > (100 - this.settings.percentageVal1)) {
+                                this.settings.percentageVal2 = 100 - this.settings.percentageVal1;
+                                this.settings.percentageVal3 = 0;
+                            } else {
+                                if (this.settings.percentageVal3 >
+                                    (100 - this.settings.percentageVal1 - this.settings.percentageVal2)) {
+                                    this.settings.percentageVal3 =
+                                        100 - this.settings.percentageVal1 - this.settings.percentageVal2;
+                                }
+                            }
+                        }
+                        margin1 = this.settings.percentageVal1;
+                        margin2 = margin1 + this.settings.percentageVal2;
+                        margin3 = margin2 + this.settings.percentageVal3;
+                    }
+                    this.data.states = [];
+                    if (categoryFlag === 0 && this.settings.showColor) {
+                        this.data.states.push(this.data.max);
+                        if (this.settings.fillOption === `value`) {
+                            this.data.states.push(margin4);
+                        }
+                        this.data.states.push(margin3);
+                        this.data.states.push(margin2);
+                        this.data.states.push(margin1);
+                    } else {
+                        this.data.states.push(this.data.max);
+                    }
+                    sortedRanges = this.data.states;
+                    let sortedMeasure2: number[] = [];
+                    for (let index: number = 0; index < actualValue.length; index++) {
+                        sortedMeasure2[index] = actualValue[actualValue.length - index - 1];
+                    }
+                    if (this.settings.fillOption === "value") {
+                        range = this.svgLinear.selectAll(`rect.range`)
+                            .data(sortedRanges);
+                        range.enter()
+                            .append(`rect`)
+                            .attr(`class`, (d: number, i: number): string => {
+                                return rangeLiteral + i;
+                            });
+                    } else {
+                        range = this.svgLinear.append(`rect`)
+                            .classed(`rectRange`, true)
+                            .data(sortedRanges);
+                        range.enter()
+                            .append("rect");
+                    }
+                    if (this.settings.showColor) {
+                        const zoneLen: number = this.colorsGlobal.length;
+                        for (let index: number = 0; index < zoneLen; index++) {
+                            colors.push(this.colorsGlobal[index]);
+                            offSetValue.push(this.data.states[index]);
+                        }
+                        if (this.settings.fillOption === `value`) {
+                            const constID: number = 3;
+                            const context: this = this;
+                            range.style(`fill`, (d: number, index: number): string => {
+                                gradient = context.svgLinear.append("svg:linearGradient");
+                                gradient.attr("id", `gradient${(constID + index)}`)
+                                    .classed("gradientSVG", true)
+                                    .attr("x1", "100%")
+                                    .attr("y1", "100%")
+                                    .attr("x2", "0%")
+                                    .attr("y2", "100%")
+                                    .attr("spreadMethod", "pad");
+                                gradient.append("stop").attr("offset", "0%")
+                                    .attr("stop-color",
+                                        context.getDarkShade(context.colorsGlobal[index], 0.5)).attr("stop-opacity", 1);
+                                gradient.append("stop").attr("offset", "100%")
+                                    .attr("stop-color", context.colorsGlobal[index]).attr("stop-opacity", 1);
+
+                                return `url(#gradient${(constID + index)})`;
+                            });
+                        } else {
+                            let context: this = this;
+                            range.style("fill", (d: number, index: number): string => {
+                            if (index === 0) {
+                                    gradient = context.svgLinear.append("svg:linearGradient");
+                                    gradient.attr("id", `gradient1`)
+                                        .classed("gradientSVG", true)
+                                        .attr("x1", "100%")
+                                        .attr("y1", "0%")
+                                        .attr("x2", "100%")
+                                        .attr("y2", "100%")
+                                        .attr("spreadMethod", "pad");
+                                } else {
+                                    gradient.append("stop")
+                                        .attr("offset", `${offSetValue[4 - index]}%`)
+                                        .attr("stop-color", context.colorsGlobal[4 - index])
+                                        .attr("stop-opacity", 1);
+                                }
+
+                                return `url(#gradient1)`;
+                            });
+                        }
+                        measureLeftPos = leftPos + modHeight / 4;
+                        measureWidth = modHeight / 2;
+                        comparsionWidth = modHeight / 6;
+                    } else {
+                        gradient = this.svgLinear.append("svg:linearGradient");
+                        gradient.attr("id", "gradient2")
+                            .classed("gradientSVG", true)
+                            .attr("x1", "100%")
+                            .attr("y1", "100%")
+                            .attr("x2", "0%")
+                            .attr("y2", "100%")
+                            .attr("spreadMethod", "pad");
+                        gradient.append("stop").attr("offset", "0%").attr("stop-color",
+                                this.getDarkShade(this.settings.ComparisonFillColor, 0.5)).attr("stop-opacity", 1);
+                        gradient.append("stop").attr("offset", "100%")
+                            .attr("stop-color", this.settings.ComparisonFillColor).attr("stop-opacity", 1);
+                        range.style(`fill`, "url(#gradient2)");
+                        measureLeftPos = leftPos;
+                        measureWidth = modHeight;
+                        comparsionWidth = modHeight / 3;
+                    }
+                    const visualContext: this = this;
+                    range.attr(`width`, modHeight)
+                        .attr(`height`, (d: number): number => {
+                            return (yScale(yScale.domain()[0]) - yScale(d)) < 0
+                                ? 0 : (yScale(yScale.domain()[0]) - yScale(d));
+                        })
+                        .attr(`x`, leftPos)
+                        .attr(`y`, -yScale(yScale.domain()[0]))
+                        .attr(`transform`, "rotate(180)");
+                    gradient = this.svgLinear.append("svg:linearGradient");
+                    gradient.attr("id", "gradient")
+                        .classed("gradientSVG", true)
+                        .attr("x1", "100%")
+                        .attr("y1", "100%")
+                        .attr("x2", "0%")
+                        .attr("y2", "100%")
+                        .attr("spreadMethod", "pad");
+                    gradient.append("stop").attr("offset", "0%")
+                        .attr("stop-color", this.getDarkShade(measureColor, 0.5)).attr("stop-opacity", 1);
+                    gradient.append("stop").attr("offset", "100%").attr("stop-color", measureColor).attr("stop-opacity", 1);
+
+                    if (categoryFlag === 0) {
+                        measure = this.svgLinear
+                            .append(`rect`)
+                            .classed(`measure`, true)
+                            .style(`fill`, "url(#gradient)")
+                            .attr(`transform`, "rotate(180)");
+                        measure
+                            .attr(`width`, measureWidth)
+                            .attr(`x`, measureLeftPos)
+                            .attr(`y`, -yScale(yScale.domain()[0]));
+                        if (this.settings.animationToggle) {
+                            measure.attr(`height`, 0)
+                                .transition().duration(this.settings.animationTime * 1000)
+                                .attr(`height`, yScale(yScale.domain()[0]) - yScale(this.data.actual));
+                        } else {
+                            measure.attr(`height`, yScale(yScale.domain()[0]) - yScale(this.data.actual));
+                        }
+                    } else {
+                        measure2 = this.svgLinear.selectAll(`rect.measure`)
+                            .data(sortedMeasure2);
+                        measure2.enter()
+                            .append(`rect`)
+                            .attr("class", "measure")
+                            .attr(`id`, (d: number, index: number): string => {
+                                return `measureId${index}`;
+                            });
+                        const constID: number = 3;
+                        const context: this = this;
+                        measure2.style(`fill`, (d: number, index: number): string => {
+                            gradient = context.svgLinear.append("svg:linearGradient");
+                            gradient.attr("id", `gradientM${(constID + index)}`)
+                                .classed("gradientSVG", true)
+                                .attr("x1", "100%")
+                                .attr("y1", "100%")
+                                .attr("x2", "0%")
+                                .attr("y2", "100%")
+                                .attr("spreadMethod", "pad");
+                            gradient.append("stop").attr("offset", "0%")
+                                .attr("stop-color", context.getDarkShade(
+                                    legendColor[index], 0.5)).attr("stop-opacity", 1);
+                            gradient.append("stop").attr("offset", "100%")
+                                .attr("stop-color", legendColor[index]).attr("stop-opacity", 1);
+
+                            return `url(#gradientM${(constID + index)})`;
+                        });
+                        measure2.attr(`width`, (d: number, index: number): number => {
+                            return measureWidth / (index / legendLength + 1);
+                        })
+                            .attr(`x`, (d: number, index: number): number => {
+
+                                return ((1.085 * measureLeftPos - (measureWidth / (index / legendLength + 1))) / 2);
+                            })
+                            .attr(`y`, -yScale(yScale.domain()[0]))
+                            .attr(`transform`, "rotate(180)");
+                        if (this.settings.animationToggle) {
+                            measure2.attr(`height`, (d: number): number => {
+                                return 0;
+                            })
+                                .transition().duration(this.settings.animationTime * 1000)
+                                .attr(`height`, (d: number): number => {
+                                    return (yScale(yScale.domain()[0]) - yScale(d)) < 0
+                                        ? 0 : (yScale(yScale.domain()[0]) - yScale(d));
+                                });
+                        } else {
+                            measure2.attr(`height`, (d: number): number => {
+                                return (yScale(yScale.domain()[0]) - yScale(d)) < 0
+                                    ? 0 : (yScale(yScale.domain()[0]) - yScale(d));
+                            });
+                        }
+                    }
+                    this.trendValue1.style(`text-align`, `left`);
+                    this.trendValue2.style(`text-align`, `left`);
+                    $(".data_percentagev").hide();
+                    $(".data_totalv").hide();
+                    $(`.trendtext1v`).hide();
+                    $(`.trendtext2v`).hide();
+                    vDataLabel = d3.select(".linearSVG").append("g").classed("LG_verticalDataLabel", true);
+                    let difference: number;
+                    const diff: number = 150;
+                    const actualValLength: number = 6;
+                    if (this.settings.labelDisplayUnits === 1) { difference = diff + this.data.actual.toString().length * actualValLength;}
+                     else { difference = diff; }
+                    let availableWidth: number = parseInt($(".linearSVG").css("marginLeft").toString(), 10) - measureWidth - 10;
+                    const adjustFactor: number = 1.55;
+                    const widthAdjust: number = 0.3;
+                    if (this.settings.showlabel) {
+                        const textPropsv: TextProperties = {
+                            fontFamily: this.settings.fontFamily,
+                            fontSize: `${this.settings.fontSize}px`,
+                            text: actualVal
+                        };
+                        let updatedTextv: string = textMeasurementService.getTailoredTextOrDefault(textPropsv, availableWidth);
+                        vDataLabel.append("text")
+                            .classed("data_totalv", true)
+                            .attr(`transform`, `${`translate(`}
+                        ${(modHeight - adjustFactor * difference)}${`,`}${(svgheight - 20)} )`)
+                            .style(`fill`, this.settings.DataColor)
+                            .style(`font-family`, this.settings.fontFamily)
+                            .style(`font-size`, `${this.settings.fontSize}px`)
+                            .text(updatedTextv)
+                            .append("title").text(actualTooltip);
+                    } else {
+                        $(".data_totalv").hide();
+                    }
+                    if (this.settings.showPercentage) {
+                        const textPropspercen: TextProperties = {
+                            fontFamily: this.settings.fontFamily,
+                            fontSize: `${this.settings.fontSize}px`,
+                            text: `${percentageVal.toString()}%`
+                        };
+                        let updatedTextpercen: string = textMeasurementService.getTailoredTextOrDefault(textPropspercen, availableWidth);
+                        vDataLabel.append("text").text(updatedTextpercen)
+                            .classed("data_percentagev", true)
+                            .attr(`transform`,
+                                `translate(${(modHeight - adjustFactor * difference)}${`,`}${(svgheight - 50)} )`)
+                            .style(`fill`, this.settings.PercentageDataColor)
+                            .style(`font-family`, this.settings.percentagefontFamily)
+                            .style(`font-size`, `${this.settings.percentagefontSize}px`)
+                            .append("title").text(`${percentageVal}%`);
+                    } else {
+                        $(".data_percentagev").hide();
+                    }
+                    if (this.data.max <= this.data.min) {
+                        if (measure === undefined) {
+                            $(".rectRange").remove();
+                            $(".measure").remove();
+                            this.nullValueError();
+                        }
+                        measure.style(`display`, `none`);
+
+                    }
+                    const eleLabel: JQuery = $(".LG_verticalDataLabel");
+                    const eleTrend: JQuery = $(".lg_imagetab");
+                    if (eleLabel && eleLabel.length && eleLabel[0]) {
+                        const domPosition: ClientRect = eleLabel[0].getBoundingClientRect();
+                        if (domPosition.left < 0) { $(".LG_verticalDataLabel text").remove(); }
+                    }
+                    let vMarkerMin: number = yScale(minRangeValue);
+                    let vMarkerMax: number = yScale(maxRangeValue);
+                    vMarker = yScale(this.data.target); 
+                    let marker_select = d3.select(".marker");
+                    let markerTriangle_select = d3.select(".markerTriangle");
+                    let markerLine: d3.Selection<SVGElement> = this.svgLinear
+                        .append(`line`)
+                        .classed(`marker`, true)
+                        .style(`stroke`, `brown`)
+                        .attr({
+                            x1: 3,
+                            x2: modHeight + 3,
+                            y1: vMarker,
+                            y2: vMarker
+                        });
+                    markerLine.on("mouseover", (): void => {
+                        marker_select.attr("stroke-width", "5");
+                    });
+                    markerLine.on("mouseout", (): void => {
+                        marker_select.attr("stroke-width", "1");
+                    });
+                    if (this.settings.legendNewPosition === "aboveMarker") {
+                        let targetMarker: d3.Selection<SVGElement> = this.svg.append("polygon")
+                        .classed("markerTriangle", true)
+                        .attr({
+                            points: `${-5},${vMarker - 4} ${-5},${vMarker + 4} ${3}, ${vMarker}`
+                        }).style("fill", "brown")
+                        .attr("stroke", "brown")
+                        .attr("stroke-width", 3);
+                        targetMarker.on("mouseover", (): void => {
+                            markerTriangle_select.attr("stroke-width", 5);
+                            marker_select.attr("stroke-width", "5");
+                        });
+                        targetMarker.on("mouseout", (): void => {
+                            markerTriangle_select.attr("stroke-width", "3");
+                            marker_select.attr("stroke-width", "1");
+                        });
+                        markerLine.on("mouseover", (): void => {
+                            markerTriangle_select.attr("stroke-width", 5);
+                            marker_select.attr("stroke-width", "5");
+                        });
+                        markerLine.on("mouseout", (): void => {
+                            markerTriangle_select.attr("stroke-width", "3");
+                            marker_select.attr("stroke-width", "1");
+                        });
+                    }
+                    this.svgLinear.selectAll(`line.markerTilt`).remove();
+                    if (this.data.bestSet) {
+                        const bestMarker: number = yScale(this.data.best);
+                        this.svgLinear
+                            .append(`line`)
+                            .classed(`bestMarker`, true)
+                            .style("stroke-dasharray", "5, 5")
+                            .style(`stroke`, `#000`)
+                            .attr({
+                                x1: 3,
+                                x2: modHeight + 3,
+                                y1: bestMarker,
+                                y2: bestMarker
+                            });
+                        if (this.settings.showScale) {
+                            this.svgLinear
+                                .append(`line`)
+                                .classed(`markerTilt`, true)
+                                .style("stroke-dasharray", "5, 5")
+                                .style(`stroke`, `#000`)
+                                .attr({
+                                    x1: modHeight + 3,
+                                    x2: modHeight + 10,
+                                    y1: bestMarker,
+                                    y2: bestMarker
+                                });
+                        }
+                    }
+                    let linePostion: number = Math.abs(Math.round(Math.abs(measureLeftPos) - (modHeight + 4)));
+                    if (this.settings.showScale) {
+                        this.svgLinear
+                            .append(`line`)
+                            .classed(`markerTilt`, true)
                             .style(`stroke`, `#000`)
                             .attr({
                                 x1: modHeight + 3,
-                                y1: bestMarker,
                                 x2: modHeight + 10,
-                                y2: bestMarker
+                                y1: vMarker,
+                                y2: vMarker
                             });
                     }
-                }
-                let linePostion : number;
-                linePostion = Math.abs(Math.round(Math.abs(measureLeftPos) - (modHeight + 4)));
-                if (this.settings.showScale) {
-                    this.svgLinear
-                        .append(`line`)
-                        .classed(`markerTilt`, true)
-                        .style(`stroke`, `#000`)
-                        .attr({
-                            x1: modHeight + 3 ,
-                            y1: vMarker,
-                            x2: modHeight + 10 ,
-                            y2: vMarker
-                        });
-                }
-                if (this.settings.showRange) {
-                    let strokeColor: string;
-                    strokeColor = this.settings.RangeTicksColor;
-                    this.svgLinear
-                        .append(`line`)
-                        .classed(`markermin`, true)
-                        .style(`stroke`, strokeColor)
-                        .style('stroke-width', `${this.settings.rangeWidth}px`)
-                        .attr({
-                            x1: 4 ,
-                            y1: vMarkerMin,
-                            x2: modHeight + 4,
-                            y2: vMarkerMin
-                        });
-                    if (minRangeValue < maxRangeValue) {
-                    this.svgLinear
-                        .append(`line`)
-                        .classed(`markermax`, true)
-                        .style(`stroke`, strokeColor)
-                        .style('stroke-width', `${this.settings.rangeWidth}px`)
-                        .attr({
-                            x1: 4,
-                            y1: vMarkerMax,
-                            x2: modHeight + 4,
-                            y2: vMarkerMax
-                        });
+                    if (this.settings.showRange) {
+                        let strokeColor: string = this.settings.RangeTicksColor;
+                        
+                        this.svgLinear
+                            .append(`line`)
+                            .classed(`markermin`, true)
+                            .style(`stroke`, strokeColor)
+                            .style("stroke-width", `${this.settings.rangeWidth}px`)
+                            .attr({
+                                x1: 4,
+                                x2: modHeight + 4,
+                                y1: vMarkerMin,
+                                y2: vMarkerMin
+                            });
+                        if (minRangeValue < maxRangeValue) {
+                            this.svgLinear
+                                .append(`line`)
+                                .classed(`markermax`, true)
+                                .style(`stroke`, strokeColor)
+                                .style("stroke-width", `${this.settings.rangeWidth}px`)
+                                .attr({
+                                    x1: 4,
+                                    x2: modHeight + 4,
+                                    y1: vMarkerMax,
+                                    y2: vMarkerMax
+                                });
+                        }
+                        let marker_min_max = this.svgLinear.selectAll(".markermin, .markermax");
+                        if (this.settings.rangeStyle === "dotted") {
+                            marker_min_max
+                                .style("stroke-dasharray", ("1, 1"));
+
+                        } else if (this.settings.rangeStyle === "dashed") {
+                            marker_min_max
+                                .style("stroke-dasharray", ("3, 3"));
+                        } else {
+                            marker_min_max
+                                .style("stroke-dasharray", (""));
+                        }
                     }
-                    if (this.settings.rangeStyle === 'dotted') {
-                        this.svgLinear.selectAll('.markermin, .markermax')
-                            .style('stroke-dasharray', ('1, 1'));
 
-                    } else if (this.settings.rangeStyle === 'dashed') {
-                        this.svgLinear.selectAll('.markermin, .markermax')
-                            .style('stroke-dasharray', ('3, 3'));
-                    } else {
-                        this.svgLinear.selectAll('.markermin, .markermax')
-                            .style('stroke-dasharray', (''));
-                    }
+                    translateVal = `${`translate(`}${(modHeight + 15)}${`,`}${(0)})`;
+                    axisFunction = yAxis;
+                    className = "lg_yLabels";
                 }
+                let availablewidth: number = parseInt($(".linearSVG").css("marginLeft").toString(), 10) - $(".linearSVG").width();
+                this.targetLegend.select(`.targetLabel`).remove();
+                if (this.settings.legendShow) {
+                    if (this.data.target) {
+                        let targetFormatter: IValueFormatter = valueFormatter.create({
+                            format: this.data.targetFormat, precision: this.settings.legendDecimalPlaces,
+                            value: this.settings.legendDisplayUnits === 0 ?
+                                this.getValueUpdated(this.data.target) : this.settings.legendDisplayUnits
+                        });
+                        let legendTextProperties: TextProperties = {
+                            fontFamily: `${this.settings.legendFontFamily}`,
+                            fontSize: `${this.settings.legendFontSize}px`,
+                            text: `${targetFormatter.format(this.data.target)} ${this.data.targetColName}`
+                        };
+                        if (this.settings.legendNewPosition === "topLeft") {
+                            legendTextProperties.text = `| ${targetFormatter.format(this.data.target)} ${this.data.targetColName}`;
+                        }
+                        const legendHorizontalWidth: number = (this.data.trend1Exists || this.data.trend2Exists) ?
+                            (options.viewport.width / 2.5) - 20 : options.viewport.width - 20;
+                        const targetTooltip: string =
+                            this.getFormattedTooltipData(this.data.targetFormat, this.data.target);
+                        if (this.settings.Orientation === "Horizontal") {
+                            updatedText = textMeasurementService
+                                .getTailoredTextOrDefault(legendTextProperties, legendHorizontalWidth);
+                        } else {
+                            updatedText = textMeasurementService
+                                .getTailoredTextOrDefault(legendTextProperties, availablewidth * 0.8);
+                        }
 
-                translateVal = `${`translate(`}${(modHeight + 15)}${`,`}${(0)})`;
-                axisFunction = yAxis;
-                className = 'lg_yLabels';
-            }
+                        this.targetLegend.append(`span`)
+                            .classed(`targetLabel`, true)
+                            .text(updatedText)
+                            .style({
+                                "font-family": this.settings.legendFontFamily,
+                                "font-size": `${this.settings.legendFontSize}px`
+                            }).style("color", this.settings.legendColor)
+                            .attr("title", `${targetTooltip} ${this.data.targetColName}`);
+                        let divWidth: number;
+                        if (this.rootElement.select(".lg_legend_tab")) {
+                            divWidth = parseFloat(d3.select(".lg_legend_tab").style("width"));
+                        }
+                        if (categoryFlag === 0 && this.settings.Orientation === "Vertical") {
+                            if (this.settings.legendNewPosition === "aboveMarker") {
+                                legend_tab_selectAll
+                                    .style("margin-left", `${(viewport.width / 2) - (modHeight / 2) - divWidth - 10}px`);
+                            } else {
+                                legend_tab_selectAll
+                                    .style("margin-left", `20px`);
+                            }
+                        } else if (categoryFlag === 1 && this.settings.Orientation === "Vertical") {
+                            if (this.settings.legendPos === "Left" || this.settings.legendPos === "Left center") {
+                                if (this.settings.legendNewPosition === "aboveMarker") {
+                                    legend_tab_selectAll
+                                        .style("margin-left",
+                                            `${(viewport.width / 2) - (modHeight / 2) - divWidth - 10}px`);
+                                } else {
+                                    legend_tab_selectAll
+                                        .style("margin-left", `${legendHeight.width + 20}px`);
+                                }
+                            } else {
+                                if (this.settings.legendNewPosition === "aboveMarker") {
+                                    legend_tab_selectAll
+                                        .style("margin-left",
+                                            `${(viewport.width / 2) - (modHeight / 2) - divWidth - 10}px`);
+                                } else {
+                                    legend_tab_selectAll
+                                        .style("margin-left", `20px`);
+                                }
+                            }
+                        }
 
-            let availablewidth: number;
-            availablewidth = parseInt($('.linearSVG').css('marginLeft').toString(), 10) - $('.linearSVG').width();
-
-            this.targetLegend.select(`.targetLabel`).remove();
-            if (this.settings.legendShow) {
-                if (this.data.target) {
-                    let targetFormatter: IValueFormatter;
-                    targetFormatter = ValueFormatter.create({
-                        format: this.data.targetFormat, precision: this.settings.legendDecimalPlaces,
-                        value: this.settings.legendDisplayUnits === 0 ?
-                            this.getValueUpdated(this.data.target) : this.settings.legendDisplayUnits
-                    });
-                    let legendTextProperties: TextProperties;
-                    legendTextProperties = {
-                        fontFamily: `${this.settings.legendFontFamily}`,
-                        fontSize: `${this.settings.legendFontSize}px`,
-                        text: `${targetFormatter.format(this.data.target)} ${this.data.targetColName}`
-                    };
-                    if (this.settings.legendNewPosition === 'topLeft') {
-                        legendTextProperties.text = `| ${targetFormatter.format(this.data.target)} ${this.data.targetColName}`;
+                        if (categoryFlag === 0 && this.settings.Orientation === "Horizontal") {
+                            if (this.settings.legendNewPosition === "aboveMarker") {
+                                legend_tab_selectAll
+                                    .style("margin-left", `${xScale(this.data.target) - (divWidth / 2)}px`);
+                            } else {
+                                legend_tab_selectAll.style("margin-left", `${legendHeight.width + 20}px`);
+                            }
+                        } else if (categoryFlag === 1 && this.settings.Orientation === `Horizontal`) {
+                            if (this.settings.legendPos === "Left" || this.settings.legendPos === "Left center") {
+                                if (this.settings.legendNewPosition === "aboveMarker") {
+                                    legend_tab_selectAll.style("margin-left", `${xScale(this.data.target) -
+                                        (divWidth / 2) + legendHeight.width}px`);
+                                } else {
+                                    legend_tab_selectAll.style("margin-left", `${legendHeight.width + 20}px`);
+                                }
+                            } else {
+                                if (this.settings.legendNewPosition === "aboveMarker") {
+                                    legend_tab_selectAll
+                                        .style("margin-left", `${xScale(this.data.target) - (divWidth / 2)}px`);
+                                } else {
+                                    legend_tab_selectAll.style("margin-left", `${20}px`);
+                                }
+                            }
+                        }
                     }
-                    const legendHorizontalWidth: number = (this.data.trend1Exists || this.data.trend2Exists) ?
+
+                    this.bestLegend.selectAll(`.bestLabel`).remove();
+                    if (this.data.best && this.settings.legendShow) {
+                        let bestFormatter: IValueFormatter = valueFormatter.create({
+                            format: this.data.bestFormat, precision: this.settings.legendDecimalPlaces,
+                            value: this.settings.legendDisplayUnits === 0 ?
+                                this.getValueUpdated(this.data.best) : this.settings.legendDisplayUnits
+                        });
+                        const legendProperties: TextProperties = {
+                            fontFamily: `${this.settings.legendFontFamily}`,
+                            fontSize: `${this.settings.legendFontSize}px`,
+                            text: `${bestFormatter.format(this.data.best)} ${this.data.bestColName}`
+                        };
+                        const hWidth: number = (this.data.trend1Exists || this.data.trend2Exists) ? 
                         (options.viewport.width / 2.5) - 20 : options.viewport.width - 20;
-                    const targetTooltip: string = this.getFormattedTooltipData(this.data.targetFormat, this.data.target);
-                    if (this.settings.Orientation === 'Horizontal') {
-                        updatedText = textMeasurementService.getTailoredTextOrDefault(legendTextProperties, legendHorizontalWidth);
-                    } else {
-                        updatedText = textMeasurementService.getTailoredTextOrDefault(legendTextProperties, availablewidth * 0.8);
-                    }
-
-                    this.targetLegend.append(`span`)
-                        .classed(`targetLabel`, true)
-                        .text(updatedText)
-                        .style({
-                            'font-size': `${this.settings.legendFontSize}px`,
-                            'font-family': this.settings.legendFontFamily
-                        }).style('color', this.settings.legendColor)
-                        .attr('title', `${targetTooltip} ${this.data.targetColName}`);
-                    let divWidth: number;
-                    if (this.rootElement.select('.lg_legend_tab')) {
-                        divWidth = parseFloat(d3.select('.lg_legend_tab').style('width'));
-                    }
-                    if (categoryFlag === 0 && this.settings.Orientation === 'Vertical') {
-                        if (this.settings.legendNewPosition === 'aboveMarker') {
-                            d3.selectAll('.lg_legend_tab')
-                                .style('margin-left', `${(viewport.width / 2) - (modHeight / 2) - divWidth - 10}px`);
+                        const bestTooltip: string = this.getFormattedTooltipData(this.data.bestFormat, this.data.best);
+                        if (this.settings.Orientation === "Horizontal") {
+                            updatedText = textMeasurementService.getTailoredTextOrDefault(legendProperties, hWidth);
                         } else {
-                            d3.selectAll('.lg_legend_tab')
-                                .style('margin-left', `20px`);
+                            updatedText = textMeasurementService
+                                .getTailoredTextOrDefault(legendProperties, availablewidth * 0.8);
                         }
-                    } else if (categoryFlag === 1 && this.settings.Orientation === 'Vertical') {
-                        if (this.settings.legendPos === 'Left' || this.settings.legendPos === 'Left center') {
-                            if (this.settings.legendNewPosition === 'aboveMarker') {
-                                d3.selectAll('.lg_legend_tab')
-                                    .style('margin-left', `${(viewport.width / 2) - (modHeight / 2) - divWidth - 10}px`);
-                            } else {
-                                d3.selectAll('.lg_legend_tab')
-                                    .style('margin-left', `${legendHeight.width + 20}px`);
-                            }
-                        } else {
-                            if (this.settings.legendNewPosition === 'aboveMarker') {
-                                d3.selectAll('.lg_legend_tab')
-                                    .style('margin-left', `${(viewport.width / 2) - (modHeight / 2) - divWidth - 10}px`);
-                            } else {
-                                d3.selectAll('.lg_legend_tab')
-                                    .style('margin-left', `20px`);
-                            }
-                        }
-                    }
-                    if (categoryFlag === 0 && this.settings.Orientation === 'Horizontal') {
-                        if (this.settings.legendNewPosition === 'aboveMarker') {
-                            d3.selectAll('.lg_legend_tab').style('margin-left', `${xScale(this.data.target) - (divWidth / 2)}px`);
-                        } else {
-                            d3.selectAll('.lg_legend_tab').style('margin-left', `${legendHeight.width + 20}px`);
-                        }
-                    } else if (categoryFlag === 1 && this.settings.Orientation === `Horizontal`) {
-                        if (this.settings.legendPos === 'Left' || this.settings.legendPos === 'Left center') {
-                            if (this.settings.legendNewPosition === 'aboveMarker') {
-                                d3.selectAll('.lg_legend_tab').style('margin-left', `${xScale(this.data.target) -
-                                    (divWidth / 2) + legendHeight.width}px`);
-                            } else {
-                                d3.selectAll('.lg_legend_tab').style('margin-left', `${legendHeight.width + 20}px`);
-                            }
-                        } else {
-                            if (this.settings.legendNewPosition === 'aboveMarker') {
-                                d3.selectAll('.lg_legend_tab').style('margin-left', `${xScale(this.data.target) - (divWidth / 2)}px`);
-                            } else {
-                                d3.selectAll('.lg_legend_tab').style('margin-left', `${20}px`);
-                            }
-                        }
-                    }
-                }
 
-                this.bestLegend.selectAll(`.bestLabel`).remove();
-                if (this.data.best && this.settings.legendShow) {
-                    let bestFormatter: IValueFormatter;
-                    bestFormatter = ValueFormatter.create({
-                        format: this.data.bestFormat, precision: this.settings.legendDecimalPlaces,
-                        value: this.settings.legendDisplayUnits === 0 ?
-                            this.getValueUpdated(this.data.best) : this.settings.legendDisplayUnits
-                    });
-                    const legendProperties: TextProperties = {
-                        fontFamily: `${this.settings.legendFontFamily}`,
-                        fontSize: `${this.settings.legendFontSize}px`,
-                        text: `${bestFormatter.format(this.data.best)} ${this.data.bestColName}`
-                    };
-                    const hWidth: number = (this.data.trend1Exists || this.data.trend2Exists) ?
-                        (options.viewport.width / 2.5) - 20 : options.viewport.width - 20;
-                    const bestTooltip: string = this.getFormattedTooltipData(this.data.bestFormat, this.data.best);
-                    if (this.settings.Orientation === 'Horizontal') {
-                        updatedText = textMeasurementService.getTailoredTextOrDefault(legendProperties, hWidth);
-                    } else {
-                        updatedText = textMeasurementService.getTailoredTextOrDefault(legendProperties, availablewidth * 0.8);
-                    }
+                        this.bestLegend.append(`span`)
+                            .classed(`bestLabel`, true)
+                            .html("&#9478")
+                            .style({
+                                "font-size": `${this.settings.legendFontSize}px`,
+                                "margin-left": `${-this.settings.legendFontSize / 3}px`
+                            }).style("color", this.settings.legendColor)
+                            .attr("title", `${bestTooltip} ${this.data.bestColName}`);
 
-                    this.bestLegend.append(`span`)
-                        .classed(`bestLabel`, true)
-                        .html('&#9478')
-                        .style({
-                            'margin-left': `${-this.settings.legendFontSize / 3}px`,
-                            'font-size': `${this.settings.legendFontSize}px`
-                        }).style('color', this.settings.legendColor)
-                        .attr('title', `${bestTooltip} ${this.data.bestColName}`);
-
-                    this.bestLegend.append(`span`)
-                        .classed(`bestLabel`, true)
-                        .text(updatedText)
-                        .style({
-                            'font-size': `${this.settings.legendFontSize}px`,
-                            'font-family': this.settings.legendFontFamily
-                        }).style('color', this.settings.legendColor);
-                }
-            } else {
-                this.targetLegend.selectAll('*').remove();
-                this.bestLegend.selectAll('*').remove();
-            }
-
-            if (this.settings.showTrend) {
-                let updatedText1: string;
-                let updatedText2: string;
-                const arrowColorI1: string = this.settings.Indicator1;
-                const arrowColorI2: string = this.settings.Indicator2;
-
-                if (this.data.trend1Exists) {
-                    const trend1ValText: string = this.data.trend1ColName;
-                    const textProps1: TextProperties = {
-                        fontSize: `${this.settings.trendfontSize}px`,
-                        fontFamily: this.settings.trendfontFamily,
-                        text: `${trend1Val} ${trend1ValText}`
-                    };
-                    if (this.settings.Orientation === 'Horizontal') {
-                        updatedText1 = textMeasurementService.getTailoredTextOrDefault(textProps1, (options.viewport.width / 2.1) - 20);
-                    } else {
-                        updatedText1 = textMeasurementService.getTailoredTextOrDefault(textProps1, availablewidth * 0.8);
-                    }
-                    this.trendValue1.style(`display`, `inline`);
-                    this.trendValue1.select(`span.trendvalue1arrow`).remove();
-                    this.trendValue1.select(`span`).remove();
-                    this.trendValue1.append(`span`)
-                        .classed(`trendvalue1arrow`, true)
-                        .html(upArrow)
-                        .style({
-                            color: arrowColorI1,
-                            'font-size': `${percentageFontTrend + 6}px`,
-                            'font-family': this.settings.trendfontFamily
-                        });
-
-                    const trend1Tooltip: string = this.getFormattedTooltipData(this.data.trend1Format, this.data.trendValueOne);
-                    this.trendValue1.append(`span`).classed(`trendvalue1text`, true)
-                        .text(updatedText1)
-                        .style({
-                            color: this.settings.trendColor,
-                            'font-size': `${this.settings.trendfontSize}px`,
-                            'font-family': this.settings.trendfontFamily
-                        })
-                        .attr('title', `${trend1Tooltip} ${trend1ValText}`);
-                    if (this.data.trendValueOne < 0) {
-                        $('.trendvalue1arrow').css({
-                            transform: 'rotate(90deg)',
-                            display: 'inline-block'
-                        });
+                        this.bestLegend.append(`span`)
+                            .classed(`bestLabel`, true)
+                            .text(updatedText)
+                            .style({
+                                "font-family": this.settings.legendFontFamily,
+                                "font-size": `${this.settings.legendFontSize}px`
+                            }).style("color", this.settings.legendColor);
                     }
                 } else {
-                    this.trendValue1.style(`display`, `none`);
+                    this.targetLegend.selectAll("*").remove();
+                    this.bestLegend.selectAll("*").remove();
                 }
+                if (this.settings.showTrend) {
+                    let updatedText1: string;
+                    let updatedText2: string;
+                    const arrowColorI1: string = this.settings.Indicator1;
+                    const arrowColorI2: string = this.settings.Indicator2;
 
-                if (this.data.trend2Exists) {
-                    const trend2ValText: string = this.data.trend2ColName;
-                    const textProps2: TextProperties = {
-                        fontSize: `${this.settings.trendfontSize}px`,
-                        fontFamily: this.settings.trendfontFamily,
-                        text: `${trend2Val} ${trend2ValText}`
-                    };
-                    if (this.settings.Orientation === 'Horizontal') {
-                        updatedText2 = textMeasurementService.getTailoredTextOrDefault(textProps2, (options.viewport.width / 2.1) - 20);
+                    if (this.data.trend1Exists) {
+                        const trend1ValText: string = this.data.trend1ColName;
+                        const textProps1: TextProperties = {
+                            fontFamily: this.settings.trendfontFamily,
+                            fontSize: `${this.settings.trendfontSize}px`,
+                            text: `${trend1Val} ${trend1ValText}`
+                        };
+                        if (this.settings.Orientation === "Horizontal") {
+                            updatedText1 = textMeasurementService.
+                                getTailoredTextOrDefault(textProps1, (options.viewport.width / 2.1) - 20);
+                        } else {
+                            updatedText1 = textMeasurementService.
+                                getTailoredTextOrDefault(textProps1, availablewidth * 0.8);
+                        }
+                        this.trendValue1.style(`display`, `inline`);
+                        this.trendValue1.select(`span.trendvalue1arrow`).remove();
+                        this.trendValue1.select(`span`).remove();
+                        this.trendValue1.append(`span`)
+                            .classed(`trendvalue1arrow`, true)
+                            .html(upArrow)
+                            .style({
+                                "color": arrowColorI1,
+                                "font-family": this.settings.trendfontFamily,
+                                "font-size": `${percentageFontTrend + 6}px`
+                            });
+
+                        const trend1Tooltip: string = this.getFormattedTooltipData(this.data.trend1Format, this.data.trendValueOne);
+                        this.trendValue1.append(`span`).classed(`trendvalue1text`, true)
+                            .text(updatedText1)
+                            .style({
+                                "color": this.settings.trendColor,
+                                "font-family": this.settings.trendfontFamily,
+                                "font-size": `${this.settings.trendfontSize}px`
+                            })
+                            .attr("title", `${trend1Tooltip} ${trend1ValText}`);
+                        if (this.data.trendValueOne < 0) {
+                            $(".trendvalue1arrow").css({
+                                display: "inline-block",
+                                transform: "rotate(90deg)"
+                            });
+                        }
                     } else {
-                        updatedText2 = textMeasurementService.getTailoredTextOrDefault(textProps2, availablewidth * 0.8);
+                        this.trendValue1.style(`display`, `none`);
                     }
 
-                    this.trendValue2.style(`display`, `inline`);
-                    this.trendValue2.select(`span.trendvalue2arrow`).remove();
-                    this.trendValue2.select(`span`).remove();
-
-                    this.trendValue2.append(`span`)
-                        .classed(`trendvalue2arrow`, true)
-                        .html(upArrow)
-                        .style({
-                            color: arrowColorI2,
-                            'font-size': `${percentageFontTrend + 6}px`,
-                            'font-family': this.settings.trendfontFamily
-                        });
-                    const trend2Tooltip: string = this.getFormattedTooltipData(this.data.trend2Format, this.data.trendValueTwo);
-                    this.trendValue2.append(`span`).classed(`trendvalue2text`, true)
-                        .text(updatedText2)
-                        .style({
-                            color: this.settings.trendColor,
-                            'font-size': `${this.settings.trendfontSize}px`,
-                            'font-family': this.settings.trendfontFamily
-                        })
-                        .attr('title', `${trend2Tooltip} ${trend2ValText} `);
-                    if (this.data.trendValueTwo < 0) {
-                        $('.trendvalue2arrow').css({
-                            transform: 'rotate(90deg)',
-                            display: 'inline-block'
-                        });
+                    if (this.data.trend2Exists) {
+                        const trend2ValText: string = this.data.trend2ColName;
+                        const textProps2: TextProperties = {
+                            fontFamily: this.settings.trendfontFamily,
+                            fontSize: `${this.settings.trendfontSize}px`,
+                            text: `${trend2Val} ${trend2ValText}`
+                        };
+                        if (this.settings.Orientation === "Horizontal") {
+                            updatedText2 = textMeasurementService.
+                                getTailoredTextOrDefault(textProps2, (options.viewport.width / 2.1) - 20);
+                        } else {
+                            updatedText2 = textMeasurementService.
+                                getTailoredTextOrDefault(textProps2, availablewidth * 0.8);
+                        }
+                        this.trendValue2.style(`display`, `inline`);
+                        this.trendValue2.select(`span.trendvalue2arrow`).remove();
+                        this.trendValue2.select(`span`).remove();
+                        this.trendValue2.append(`span`)
+                            .classed(`trendvalue2arrow`, true)
+                            .html(upArrow)
+                            .style({
+                                "color": arrowColorI2,
+                                "font-family": this.settings.trendfontFamily,
+                                "font-size": `${percentageFontTrend + 6}px`
+                            });
+                        const trend2Tooltip: string =
+                            this.getFormattedTooltipData(this.data.trend2Format, this.data.trendValueTwo);
+                        this.trendValue2.append(`span`).classed(`trendvalue2text`, true)
+                            .text(updatedText2)
+                            .style({
+                                "color": this.settings.trendColor,
+                                "font-family": this.settings.trendfontFamily,
+                                "font-size": `${this.settings.trendfontSize}px`
+                            })
+                            .attr("title", `${trend2Tooltip} ${trend2ValText} `);
+                        if (this.data.trendValueTwo < 0) {
+                            $(".trendvalue2arrow").css({
+                                display: "inline-block",
+                                transform: "rotate(90deg)"
+                            });
+                        }
+                    } else {
+                        this.trendValue2.style(`display`, `none`);
                     }
-                } else {
-                    this.trendValue2.style(`display`, `none`);
-                }
-                trendLabelHeight = $('.lg_imagetab').innerHeight();
-                targetLabelHeight = $('.lg_legend_target').height();
-                const eleLabel: JQuery = this.settings.Orientation === 'Horizontal' ? $('.lg_data_tab') : $('.LG_verticalDataLabel');
-                const eleTrend: JQuery = $('.lg_imagetab');
-                const eleLegend: JQuery = $('.lg_legend_tab');
-
-                // tslint:disable-next-line:no-any
-                const domPositonLegend: any = eleLegend[0].getBoundingClientRect();
-                // tslint:disable-next-line:no-any
-                const domPositonTrend: any = eleTrend[0].getBoundingClientRect();
-                const overlap: boolean = !(domPositonTrend.right < domPositonLegend.left ||
-                    domPositonTrend.left > domPositonLegend.right ||
-                    domPositonTrend.bottom < domPositonLegend.top ||
-                    domPositonTrend.top > domPositonLegend.bottom);
-                if (overlap) {
-                    $('.lg_legend_tab span').remove();
-                }
-                if (eleLabel && eleLabel.length && eleLabel[0]) {
-                    // tslint:disable-next-line:no-any
-                    const domPositonLabel: any = eleLabel[0].getBoundingClientRect();
-                    const overlap1: boolean = !(domPositonLabel.right < domPositonTrend.left ||
-                        domPositonLabel.left > domPositonTrend.right ||
-                        domPositonLabel.bottom < domPositonTrend.top ||
-                        domPositonLabel.top > domPositonTrend.bottom);
-                    const overlap2: boolean = !(domPositonLabel.right < domPositonLegend.left ||
-                        domPositonLabel.left > domPositonLegend.right ||
-                        domPositonLabel.bottom < domPositonLegend.top ||
-                        domPositonLabel.top > domPositonLegend.bottom);
-                    if (overlap1) {
-                        this.settings.Orientation === 'Horizontal' ? $('.lg_imagetab span')
-                            .remove() : $('.LG_verticalDataLabel text').remove();
-                    }
-                    if (overlap2) {
-                        this.settings.Orientation === 'Horizontal' ? $('.lg_legend_tab span')
-                            .remove() : $('.LG_verticalDataLabel text').remove();
-                    }
-                }
-            }
-            if (this.settings.showScale) {
-                let markings: d3.Selection<SVGElement>;
-                markings = this.svg.append('g').classed(`${className}`, true);
-                markings
-                    .attr(`transform`, translateVal)
-                    .style({
-                        'font-family': `${this.settings.scaleFontFamily}`,
-                        'font-size': `${this.settings.scaleFontSize}px`,
-                        stroke: `none`,
-                        fill: this.settings.scaleColor
-                    })
-                    .call(axisFunction);
-
-                d3.selectAll('g.tick title').remove();
-                const THIS: this = this;
-                d3.selectAll('g.tick')
-                    .append('title')
-                    .text(function (d: number): string {
-                        const val: string = THIS.getFormattedTooltipData(THIS.data.actualFormat, d);
-
-                        return val;
-                    });
-
-                if (height) {
-                    markings.selectAll(`path,line`).style({
-                        stroke: this.settings.scaleColor,
-                        fill: `none`
-                    });
-                }
-                if (this.settings.Orientation === 'Horizontal') {
-                    let totalTicks: number;
-                    totalTicks = d3.selectAll('.lg_xLabels g.tick text')[0].length;
-                    d3.selectAll('.lg_xLabels g.tick text')
-                        .text(function (d: string): string {
-                            const tickProperty: TextProperties = {
-                                fontFamily: `${$this.settings.scaleFontFamily}`,
-                                fontSize: `${$this.settings.scaleFontSize}px`,
-                                text: axisFormatter.format(d)
-                            };
-                            const tickAvailWidth: number = textMeasurementService.measureSvgTextWidth(tickProperty) + 1;
-
-                            return textMeasurementService.getTailoredTextOrDefault(tickProperty, (options.viewport.width -
-                                halfMaxFormattedDataWidth) / totalTicks);
-                        });
-                    const ticks: JQuery = $('.lg_xLabels g.tick');
-                    // tslint:disable-next-line:no-any
-                    const domPositonTick1: any = ticks[0].getBoundingClientRect();
-                    const tickLen: number = !!d3.selectAll('.lg_xLabels g.tick') ? d3.selectAll('.lg_xLabels g.tick')[0].length : 1;
-                    // tslint:disable-next-line:no-any
-                    const domPositonTick2: any = ticks[tickLen - 1].getBoundingClientRect();
-                    const precede: boolean = !(domPositonTick1.right < domPositonTick2.left);
-                    if (precede) {
-                        this.svg.selectAll('.lg_xLabels').remove();
-                        this.svg.selectAll('.marker, .markermax, .markermin, .bestMarker, .markerTilt').remove();
-                    }
-                } else {
-                    let totalTicks: number;
-                    totalTicks = d3.selectAll('.lg_yLabels g.tick text')[0].length;
-                    d3.selectAll('.lg_yLabels g.tick text')
-                        .text(function (d: string): string {
-                            const tickProperties: TextProperties = {
-                                fontFamily: `${$this.settings.scaleFontFamily}`,
-                                fontSize: `${$this.settings.scaleFontSize}px`,
-                                text: axisFormatter.format(d)
-                            };
-                            const tickAvailWidth: number = textMeasurementService.measureSvgTextWidth(tickProperties) + 1;
-
-                            return textMeasurementService.getTailoredTextOrDefault(tickProperties, (options.viewport.width -
-                                halfMaxFormattedDataWidth) / totalTicks);
-                        });
-                    const tickLen: number = !!d3.selectAll('.lg_yLabels g.tick') ? d3.selectAll('.lg_yLabels g.tick')[0].length : 1;
-                    if ($('.tick')[tickLen - 1].getBoundingClientRect().right > viewport.width) {
-                        this.svg.selectAll('.lg_yLabels').remove();
-                        this.svgLinear.selectAll(`line.markerTilt`).remove();
-                    }
-                    const ticks: JQuery = $('.lg_yLabels g.tick');
-                    // tslint:disable-next-line:no-any
-                    const domPositonTick1: any = ticks[0].getBoundingClientRect();
-                    // tslint:disable-next-line:no-any
-                    const domPositonTick2: any = ticks[1].getBoundingClientRect();
-                    const overlap: boolean = !(domPositonTick1.right < domPositonTick2.left ||
-                        domPositonTick1.left > domPositonTick2.right ||
-                        domPositonTick1.bottom < domPositonTick2.top ||
-                        domPositonTick1.top > domPositonTick2.bottom);
+                    trendLabelHeight = $(".lg_imagetab").innerHeight();
+                    targetLabelHeight = $(".lg_legend_target").height();
+                    const eleLabel: JQuery = this.settings.Orientation === "Horizontal" ? $(".lg_data_tab") : $(".LG_verticalDataLabel");
+                    const eleTrend: JQuery = $(".lg_imagetab");
+                    const eleLegend: JQuery = $(".lg_legend_tab");
+                    const domPositonLegend: ClientRect = eleLegend[0].getBoundingClientRect();
+                    const domPositonTrend: ClientRect = eleTrend[0].getBoundingClientRect();
+                    const overlap: boolean = !(domPositonTrend.right < domPositonLegend.left || domPositonTrend.left > domPositonLegend.right ||
+                        domPositonTrend.bottom < domPositonLegend.top || domPositonTrend.top > domPositonLegend.bottom);
                     if (overlap) {
-                        this.svg.selectAll('.lg_yLabels').remove();
+                        $(".lg_legend_tab span").remove();
+                    }
+                    if (eleLabel && eleLabel.length && eleLabel[0]) {
+                        const domPositonLabel: ClientRect = eleLabel[0].getBoundingClientRect();
+                        const overlap1: boolean = !(domPositonLabel.right < domPositonTrend.left || domPositonLabel.left > domPositonTrend.right ||
+                            domPositonLabel.bottom < domPositonTrend.top || domPositonLabel.top > domPositonTrend.bottom);
+                        const overlap2: boolean = !(domPositonLabel.right < domPositonLegend.left || domPositonLabel.left > domPositonLegend.right ||
+                            domPositonLabel.bottom < domPositonLegend.top || domPositonLabel.top > domPositonLegend.bottom);
+                        if (overlap1) {
+                            this.settings.Orientation === "Horizontal" ? $(".lg_imagetab span")
+                                .remove() : $(".LG_verticalDataLabel text").remove();
+                        }
+                        if (overlap2) {
+                            this.settings.Orientation === "Horizontal" ? $(".lg_legend_tab span")
+                                .remove() : $(".LG_verticalDataLabel text").remove();
+                        }
                     }
                 }
-            }
+                if (this.settings.showScale) {
+                    let markings: d3.Selection<SVGElement> = this.svg.append("g").classed(`${className}`, true);
+                    markings
+                        .attr(`transform`, translateVal)
+                        .style({
+                            "fill": this.settings.scaleColor,
+                            "font-family": `${this.settings.scaleFontFamily}`,
+                            "font-size": `${this.settings.scaleFontSize}px`,
+                            "stroke": `none`
+                        })
+                        .call(axisFunction);
 
-            if (this.data.target < this.data.min || !(this.data.targetSet) || this.data.target > this.data.max) {
-                this.svgLinear.selectAll(`line.marker`).remove();
-                this.svgLinear.selectAll(`line.markerTilt`).remove();
-            } else {
-                this.svgLinear.selectAll(`.marker`).style(`display`, `block`);
-                this.svgLinear.selectAll(`line.markerTilt`).style(`display`, `block`);
-            }
-            if (categoryFlag === 1) {
-                prevFlag = options.dataViews[0].categorical.categories[0].values.length;
-            }
-            if (categoryFlag === 1 && this.settings.Orientation === `Vertical` &&
-                (this.settings.legendPos === 'Bottom' || this.settings.legendPos === 'Bottom center' ||
-                    this.settings.legendPos === 'Top' || this.settings.legendPos === 'Top center')) {
-                viewport.height = viewport.height + legendHeight.height;
-            } else if (categoryFlag === 1 && this.settings.Orientation === `Horizontal` &&
-                (this.settings.legendPos === 'Right' || this.settings.legendPos === 'Right center' ||
-                    this.settings.legendPos === 'Left' || this.settings.legendPos === 'Left center')) {
-                viewport.width = viewport.width + legendHeight.width + 15;
-            } else if (categoryFlag === 1 && this.settings.Orientation === `Horizontal` &&
-                (this.settings.legendPos === 'Bottom' || this.settings.legendPos === 'Bottom center')) {
-                viewport.height = viewport.height + legendHeight.height;
-            }
-            // Remove elements if width not available
-            const eleWidth: number = $('.lg_data_tab').width() + $('.lg_imagetab').width() + 20;
-            const actualTooltipVal: string = this.getFormattedTooltipData(this.data.actualFormat, this.data.actual);
-            let tooltipData: ITooltipData[];
-            let minToolTipData: number;
-            let targetToolTipData: number;
-            let actualToolTipData : number;
-            let maxToolTipData: number;
-            actualToolTipData = this.data.actual;
-            tooltipData = [];
-            if (this.isInteger(actualToolTipData)) {
-                tooltipData.push({
-                    displayName: this.data.actualColName,
-                    value: actualTooltipVal.toString()
-                });
-            } else {
-                tooltipData.push({
-                    displayName: this.data.actualColName,
-                    value: actualTooltipVal
-                });
-            }
-            if (this.data.targetExists) {
-                const targetTooltipVal: string = this.getFormattedTooltipData(this.data.targetFormat, this.data.target);
-                targetToolTipData = this.data.target;
-                if (this.isInteger(targetToolTipData)) {
+                    d3.selectAll("g.tick title").remove();
+                    const THIS: this = this;
+                    d3.selectAll("g.tick")
+                        .append("title")
+                        .text((d: number): string => {
+                            return THIS.getFormattedTooltipData(THIS.data.actualFormat, d);
+                        });
+
+                    if (height) {
+                        markings.selectAll(`path,line`).style({
+                            fill: `none`,
+                            stroke: this.settings.scaleColor
+                        });
+                    }
+
+                    if (this.settings.Orientation === "Horizontal") {
+                        let totalTicks: number = d3.selectAll(".lg_xLabels g.tick text")[0].length;
+                        d3.selectAll(".lg_xLabels g.tick text")
+                            .text((d: string): string => {
+                                const tickProperty: TextProperties = {
+                                    fontFamily: `${$this.settings.scaleFontFamily}`,
+                                    fontSize: `${$this.settings.scaleFontSize}px`,
+                                    text: axisFormatter.format(d)
+                                };
+                                const tickAvailWidth: number = textMeasurementService.measureSvgTextWidth(tickProperty) + 1;
+
+                                return textMeasurementService.
+                                    getTailoredTextOrDefault(tickProperty, (options.viewport.width -
+                                        halfMaxFormattedDataWidth) / totalTicks);
+                            });
+                        const ticks: JQuery = $(".lg_xLabels g.tick");
+                        const domPositonTick1: ClientRect = ticks[0].getBoundingClientRect();
+                        const tickLen: number = !!d3.selectAll(".lg_xLabels g.tick") ? d3.selectAll(".lg_xLabels g.tick")[0].length : 1;
+                        const domPositonTick2: ClientRect = ticks[tickLen - 1].getBoundingClientRect();
+                        const precede: boolean = !(domPositonTick1.right < domPositonTick2.left);
+                        if (precede) {
+                            this.svg.selectAll(".lg_xLabels").remove();
+                            this.svg.selectAll(".marker, .markermax, .markermin, .bestMarker, .markerTilt").remove();
+                        }
+                    } else {
+                        let totalTicks: number = d3.selectAll(".lg_yLabels g.tick text")[0].length;
+                        d3.selectAll(".lg_yLabels g.tick text")
+                            .text((d: string): string => {
+                                const tickProperties: TextProperties = {
+                                    fontFamily: `${$this.settings.scaleFontFamily}`,
+                                    fontSize: `${$this.settings.scaleFontSize}px`,
+                                    text: axisFormatter.format(d)
+                                };
+                                const tickAvailWidth: number = textMeasurementService.measureSvgTextWidth(tickProperties) + 1;
+
+                                return textMeasurementService.
+                                    getTailoredTextOrDefault(tickProperties, (options.viewport.width -
+                                        halfMaxFormattedDataWidth) / totalTicks);
+                            });
+                        const tickLen: number = !!d3.selectAll(".lg_yLabels g.tick") ? d3.selectAll(".lg_yLabels g.tick")[0].length : 1;
+                        if ($(".tick")[tickLen - 1].getBoundingClientRect().right > viewport.width) {
+                            this.svg.selectAll(".lg_yLabels").remove();
+                            this.svgLinear.selectAll(`line.markerTilt`).remove();
+                        }
+                        const ticks: JQuery = $(".lg_yLabels g.tick");
+                        const domPositonTick1: ClientRect = ticks[0].getBoundingClientRect();
+                        const domPositonTick2: ClientRect = ticks[1].getBoundingClientRect();
+                        const overlap: boolean = !(domPositonTick1.right < domPositonTick2.left ||
+                            domPositonTick1.left > domPositonTick2.right ||
+                            domPositonTick1.bottom < domPositonTick2.top ||
+                            domPositonTick1.top > domPositonTick2.bottom);
+                        if (overlap) {
+                            this.svg.selectAll(".lg_yLabels").remove();
+                        }
+                    }
+                }
+                if (this.data.target < this.data.min || !(this.data.targetSet) || this.data.target > this.data.max) {
+                    this.svgLinear.selectAll(`line.marker`).remove();
+                    this.svgLinear.selectAll(`line.markerTilt`).remove();
+                } else {
+                    this.svgLinear.selectAll(`.marker`).style(`display`, `block`);
+                    this.svgLinear.selectAll(`line.markerTilt`).style(`display`, `block`);
+                }
+                if (categoryFlag === 1) {
+                    prevFlag = options.dataViews[0].categorical.categories[0].values.length;
+                }
+                if (categoryFlag === 1 && this.settings.Orientation === `Vertical` &&
+                    (this.settings.legendPos === "Bottom" || this.settings.legendPos === "Bottom center" ||
+                        this.settings.legendPos === "Top" || this.settings.legendPos === "Top center")) {
+                    viewport.height = viewport.height + legendHeight.height;
+                } else if (categoryFlag === 1 && this.settings.Orientation === `Horizontal` &&
+                    (this.settings.legendPos === "Right" || this.settings.legendPos === "Right center" ||
+                        this.settings.legendPos === "Left" || this.settings.legendPos === "Left center")) {
+                    viewport.width = viewport.width + legendHeight.width + 15;
+                } else if (categoryFlag === 1 && this.settings.Orientation === `Horizontal` &&
+                    (this.settings.legendPos === "Bottom" || this.settings.legendPos === "Bottom center")) {
+                    viewport.height = viewport.height + legendHeight.height;
+                }
+                const eleWidth: number = $(".lg_data_tab").width() + $(".lg_imagetab").width() + 20;
+                const actualTooltipVal: string = this.getFormattedTooltipData(this.data.actualFormat, this.data.actual);
+                let tooltipData: ITooltipData[] = [];
+                let minToolTipData: number;
+                let targetToolTipData: number;
+                let actualToolTipData: number = this.data.actual;
+                let maxToolTipData: number;
+                if (this.isInteger(actualToolTipData)) {
                     tooltipData.push({
-                        displayName: this.data.targetColName,
-                        value: targetTooltipVal.toString()
+                        displayName: this.data.actualColName,
+                        value: actualTooltipVal.toString()
                     });
                 } else {
                     tooltipData.push({
-                        displayName: this.data.targetColName,
-                        value: Number(targetTooltipVal).toFixed(2)
+                        displayName: this.data.actualColName,
+                        value: actualTooltipVal
                     });
                 }
-            }
-            if (this.data.minFlag) {
-                const minValue: number = <number>this.dataView.categorical.values[this.minValueIndex].values[0];
-                if (this.minValueFlag && this.data.min !== minValue) {
-                    this.data.min = Number(minValue);
-                }
-                if (this.data.min && this.data.minFlag) {
-                    const minTooltipVal: string = this.getFormattedTooltipData(this.data.minFormat, this.data.min);
-                    minToolTipData = this.data.min;
-                    if (this.isInteger(Number(minToolTipData))) {
+                if (this.data.targetExists) {
+                    const targetTooltipVal: string = this.getFormattedTooltipData(this.data.targetFormat, this.data.target);
+                    targetToolTipData = this.data.target;
+                    if (this.isInteger(targetToolTipData)) {
                         tooltipData.push({
-                            displayName: this.data.minColName,
-                            value: minTooltipVal.toString()
+                            displayName: this.data.targetColName,
+                            value: targetTooltipVal.toString()
                         });
                     } else {
                         tooltipData.push({
-                            displayName: this.data.minColName,
-                            value: Number(minTooltipVal).toFixed(2)
+                            displayName: this.data.targetColName,
+                            value: Number(targetTooltipVal).toFixed(2)
                         });
                     }
                 }
-            }
-            if (this.data.maxFlag) {
-                const maxValue: number = <number>this.dataView.categorical.values[this.maxValueIndex].values[0];
-                if (this.maxValueFlag && this.data.max !== maxValue) {
-                    this.data.max = Number(maxValue);
-                }
-                if (this.data.max && this.data.maxFlag) {
-                    const maxTooltipVal: string = this.getFormattedTooltipData(this.data.maxFormat, this.data.max);
-                    const maxTooltip: string = maxTooltipVal.replace(',', '');
-                    maxToolTipData = this.data.min;
-                    if (this.isInteger(maxToolTipData)) {
-                        tooltipData.push({
-                            displayName: this.data.maxColName,
-                            value: maxTooltipVal.toString()
-                        });
-                    } else {
-                        tooltipData.push({
-                            displayName: this.data.maxColName,
-                            value: Number(maxTooltip).toFixed(2)
-                        });
+                if (this.data.minFlag) {
+                    const minValue: number = <number>this.dataView.categorical.values[this.minValueIndex].values[0];
+                    if (this.minValueFlag && this.data.min !== minValue) {
+                        this.data.min = Number(minValue);
+                    }
+                    if (this.data.min && this.data.minFlag) {
+                        const minTooltipVal: string = this.getFormattedTooltipData(this.data.minFormat, this.data.min);
+                        minToolTipData = this.data.min;
+                        if (this.isInteger(Number(minToolTipData))) {
+                            tooltipData.push({
+                                displayName: this.data.minColName,
+                                value: minTooltipVal.toString()
+                            });
+                        } else {
+                            tooltipData.push({
+                                displayName: this.data.minColName,
+                                value: Number(minTooltipVal).toFixed(2)
+                            });
+                        }
                     }
                 }
-            }
-            if (this.data.best) {
-                const bestTooltipVal: string = this.getFormattedTooltipData(this.data.bestFormat, this.data.best);
-                tooltipData.push({
-                    displayName: this.data.bestColName,
-                    value: bestTooltipVal
-                });
-            }
-            this.tooltipServiceWrapper.addTooltip(
-                this.svgLinear.selectAll('rect.range,rect.rectRange'),
-                (tooltipEvent: TooltipEventArgs<number>) => tooltipData,
-                (tooltipEvent: TooltipEventArgs<number>) => null);
-            if (categoryFlag === 0) {
+                if (this.data.maxFlag) {
+                    const maxValue: number = <number>this.dataView.categorical.values[this.maxValueIndex].values[0];
+                    if (this.maxValueFlag && this.data.max !== maxValue) {
+                        this.data.max = Number(maxValue);
+                    }
+                    if (this.data.max && this.data.maxFlag) {
+                        const maxTooltipVal: string = this.getFormattedTooltipData(this.data.maxFormat, this.data.max);
+                        const maxTooltip: string = maxTooltipVal.replace(",", "");
+                        maxToolTipData = this.data.min;
+                        if (this.isInteger(maxToolTipData)) {
+                            tooltipData.push({
+                                displayName: this.data.maxColName,
+                                value: maxTooltipVal.toString()
+                            });
+                        } else {
+                            tooltipData.push({
+                                displayName: this.data.maxColName,
+                                value: Number(maxTooltip).toFixed(2)
+                            });
+                        }
+                    }
+                }
+                if (this.data.best) {
+                    const bestTooltipVal: string = this.getFormattedTooltipData(this.data.bestFormat, this.data.best);
+                    tooltipData.push({
+                        displayName: this.data.bestColName,
+                        value: bestTooltipVal
+                    });
+                }
                 this.tooltipServiceWrapper.addTooltip(
-                    this.svgLinear.selectAll('rect.measure,rect.range,rect.rectRange'),
+                    this.svgLinear.selectAll("rect.range,rect.rectRange"),
                     (tooltipEvent: TooltipEventArgs<number>) => tooltipData,
                     (tooltipEvent: TooltipEventArgs<number>) => null);
-            }
-            if (tooltipFLag === 0) {
-                for (let index: number = 0; index < linearDataPoint.length; index++) {
+                if (categoryFlag === 0) {
                     this.tooltipServiceWrapper.addTooltip(
-                        this.svgLinear.selectAll(`rect#measureId${linearDataPoint.length - index - 1}`),
-                        (tooltipEvent: TooltipEventArgs<number>) => tooltip[index].tooltipDataPoint,
+                        this.svgLinear.selectAll("rect.measure,rect.range,rect.rectRange"),
+                        (tooltipEvent: TooltipEventArgs<number>) => tooltipData,
                         (tooltipEvent: TooltipEventArgs<number>) => null);
                 }
-            } else {
-                this.tooltipServiceWrapper.addTooltip(
-                    this.svgLinear.selectAll(`rect#measureId0`),
-                    (tooltipEvent: TooltipEventArgs<number>) => tooltip[0].tooltipDataPoint,
-                    (tooltipEvent: TooltipEventArgs<number>) => null);
+                if (tooltipFLag === 0) {
+                    for (let index: number = 0; index < linearDataPoint.length; index++) {
+                        this.tooltipServiceWrapper.addTooltip(
+                            this.svgLinear.selectAll(`rect#measureId${linearDataPoint.length - index - 1}`),
+                            (tooltipEvent: TooltipEventArgs<number>) => tooltip[index].tooltipDataPoint,
+                            (tooltipEvent: TooltipEventArgs<number>) => null);
+                    }
+                } else {
+                    this.tooltipServiceWrapper.addTooltip(
+                        this.svgLinear.selectAll(`rect#measureId0`),
+                        (tooltipEvent: TooltipEventArgs<number>) => tooltip[0].tooltipDataPoint,
+                        (tooltipEvent: TooltipEventArgs<number>) => null);
+                }
+            } catch (exeption) {
+                this.events.renderingFailed(options, exeption);
             }
         }
 
@@ -2876,31 +2489,17 @@ module powerbi.extensibility.visual {
 
             return primaryFormatterVal;
         }
-
-        // tslint:disable-next-line:cyclomatic-complexity
-        public enumerateObjectInstances(options: EnumerateVisualObjectInstancesOptions): VisualObjectInstanceEnumeration {
-            let objectName: string;
-            objectName = options.objectName;
-            let objectEnumeration: VisualObjectInstance[];
-            objectEnumeration = [];
-            if (!this.data) {
-                this.data = LinearGauge.getDefaultData();
-            }
+        public enumerateObjectInstances(options: EnumerateVisualObjectInstancesOptions):
+            VisualObjectInstanceEnumeration {
+            let objectName: string = options.objectName;
+            let objectEnumeration: VisualObjectInstance[] = [];
+            if (!this.data) { this.data = LinearGauge.GETDEFAULTDATA(); }
             switch (options.objectName) {
                 case `ChartOrientation`:
-                    objectEnumeration.push({
-                        objectName: objectName,
-                        selector: null,
-                        properties: {
-                            Orientation: this.settings.Orientation
-                        }
-                    });
+                    objectEnumeration.push({ objectName, selector: null, properties: { Orientation: this.settings.Orientation } });
                     break;
                 case `legendSettings`:
-                    objectEnumeration.push({
-                        objectName: objectName,
-                        selector: null,
-                        properties: {
+                    objectEnumeration.push({ objectName, selector: null, properties: {
                             show: this.settings.legendShow,
                             position: this.settings.legendNewPosition,
                             fill: this.settings.legendColor,
@@ -2911,10 +2510,10 @@ module powerbi.extensibility.visual {
                         }
                     });
                     break;
-                case 'categorySettings':
+                case "categorySettings":
                     if (categoryFlag === 1) {
                         objectEnumeration.push({
-                            objectName: objectName,
+                            objectName,
                             selector: null,
                             properties: {
                                 fontSize: this.settings.categoryFontSize,
@@ -2925,27 +2524,27 @@ module powerbi.extensibility.visual {
                         });
                     }
                     break;
-                case 'colors':
+                case "colors":
                     if (categoryFlag === 1) {
-                        for (let index: number = 0; index < categoryLegend.length; index++) {
+                        for (const index of categoryLegend) {
                             objectEnumeration.push({
-                                objectName: objectName,
-                                displayName: categoryLegend[index].key,
+                                objectName,
+                                displayName: index.key,
                                 properties: {
                                     fillColor: {
                                         solid: {
-                                            color: categoryLegend[index].color
+                                            color: index.color
                                         }
                                     }
                                 },
-                                selector: categoryLegend[index].selectionId.getSelector()
+                                selector: index.selectionId.getSelector()
                             });
                         }
                     }
                     break;
-                case 'animationEffect':
+                case "animationEffect":
                     objectEnumeration.push({
-                        objectName: objectName,
+                        objectName,
                         selector: null,
                         properties: {
                             show: this.settings.animationToggle,
@@ -2957,7 +2556,7 @@ module powerbi.extensibility.visual {
                     if (categoryFlag === 0) {
                         if (this.settings.fillOption === `value`) {
                             objectEnumeration.push({
-                                objectName: objectName,
+                                objectName,
                                 selector: null,
                                 properties: {
                                     show: this.settings.showColor,
@@ -2974,7 +2573,7 @@ module powerbi.extensibility.visual {
                             });
                         } else {
                             objectEnumeration.push({
-                                objectName: objectName,
+                                objectName,
                                 selector: null,
                                 properties: {
                                     show: this.settings.showColor,
@@ -2992,7 +2591,7 @@ module powerbi.extensibility.visual {
                     break;
                 case `ScaleSettings`:
                     objectEnumeration.push({
-                        objectName: objectName,
+                        objectName,
                         selector: null,
                         properties: {
                             show: this.settings.showScale,
@@ -3006,7 +2605,7 @@ module powerbi.extensibility.visual {
                     break;
                 case `TargetRange`:
                     objectEnumeration.push({
-                        objectName: objectName,
+                        objectName,
                         selector: null,
                         properties: {
                             show: this.settings.showRange,
@@ -3020,8 +2619,7 @@ module powerbi.extensibility.visual {
                     break;
                 case `Indicator`:
                     if (this.data.trendValueOne || this.data.trendValueTwo) {
-                        let props: {};
-                        props = {};
+                        let props: {} = {};
                         if (this.data.trendValueOne) {
                             props[`Indicator1`] = this.settings.Indicator1;
                         }
@@ -3029,7 +2627,7 @@ module powerbi.extensibility.visual {
                             props[`Indicator2`] = this.settings.Indicator2;
                         }
                         objectEnumeration.push({
-                            objectName: objectName,
+                            objectName,
                             selector: null,
                             properties: props
                         });
@@ -3099,7 +2697,7 @@ module powerbi.extensibility.visual {
                             };
                         }
                         objectEnumeration.push({
-                            objectName: objectName,
+                            objectName,
                             selector: null,
                             properties: props
                         });
@@ -3128,6 +2726,57 @@ module powerbi.extensibility.visual {
             }
 
             return objectEnumeration;
+        }
+        private getFormattedData(value: number, displayUnits: number, precision: number, format: string): string {
+            let formattedData: string;
+            let formatterVal: number = displayUnits;
+            if (value === null) {    value = 0;}
+            if (displayUnits === 0) {
+                let alternateFormatter: number = parseInt(value.toString(), 10).toString().length;
+                if (alternateFormatter > 9) {
+                    formatterVal = 1e9;
+                } else if (alternateFormatter <= 9 && alternateFormatter > 6) {
+                    formatterVal = 1e6;
+                } else if (alternateFormatter <= 6 && alternateFormatter >= 4) {
+                    formatterVal = 1e3;
+                } else {
+                    formatterVal = 10;
+                }
+            }
+            if (!format) { format = valueFormatter.DefaultNumericFormat; }
+            precision = precision === null ? 0 : precision;
+            let formatter: IValueFormatter = valueFormatter.create({
+                cultureSelector: this.host.locale,
+                format,
+                precision,
+                value: formatterVal,
+            });
+            formattedData = formatter.format(value);
+             return formattedData;
+        }
+
+        private getFormattedTooltipData(format: string, value: number): string {
+            let formattedData: string;
+            let formatter: IValueFormatter;
+            if (format === "" || format === undefined) {
+                format = valueFormatter.DefaultNumericFormat;
+            }
+            formatter = valueFormatter.create({
+                cultureSelector: this.host.locale,
+                format
+            });
+            formattedData = formatter.format(value);
+            if (format !== undefined) {
+                if (format.indexOf(".") > 0) {
+                    let dataFormatter: IValueFormatter = valueFormatter.create({
+                        format,
+                        value: 0
+                    });
+                    formattedData = dataFormatter.format(value);
+                }
+            }
+
+            return formattedData;
         }
     }
 }

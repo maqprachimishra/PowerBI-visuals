@@ -21,7 +21,7 @@ module powerbi.extensibility.visual {
             object = objects[objectName];
             if (object) {
                 let property: T;
-                property = <T>object[propertyName];
+                property = <T> object[propertyName];
                 if (property !== undefined) {
                     if (params) {
                         if (params.maxValue && property > params.maxValue) {
@@ -63,7 +63,7 @@ module powerbi.extensibility.visual {
                 object = categoryObject[objectName];
                 if (object) {
                     let property: T;
-                    property = <T>object[propertyName];
+                    property = <T> object[propertyName];
 
                     if (property !== undefined) {
                         return property;
