@@ -63,7 +63,7 @@ module powerbi.extensibility.visual {
      * @param {object} key - specify a key for the string you want localized in your visual
      */
     export function getLocalizedString(locale: string, key: string): string {
-        return myResources && key && myResources[key] && (((myResources[key]).localization[locale]) || (myResources[key]).defaultValue);
+        return localizedResources && key && localizedResources[key] && (((localizedResources[key]).localization[locale]) || (localizedResources[key]).defaultValue);
    }
 
 }

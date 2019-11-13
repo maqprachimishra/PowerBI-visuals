@@ -29,10 +29,19 @@ module powerbi.extensibility.visual {
     import TextProperties = powerbi.extensibility.utils.formatting.TextProperties;
     import textMeasurementService = powerbi.extensibility.utils.formatting.textMeasurementService;
     import IColorPalette = powerbi.extensibility.IColorPalette;
-    import ValueFormatter = powerbi.extensibility.utils.formatting.valueFormatter;
-
+    import valueFormatter = powerbi.extensibility.utils.formatting.valueFormatter;
+    import tooltip = powerbi.extensibility.utils.tooltip;
+    import ITooltipServiceWrapper = powerbi.extensibility.utils.tooltip.ITooltipServiceWrapper;
+    import createTooltipServiceWrapper = powerbi.extensibility.utils.tooltip.createTooltipServiceWrapper;
+    export interface TooltipEventArgs<TData> {
+        data: TData;
+        coordinates: number[];
+        elementCoordinates: number[];
+        context: HTMLElement;
+        isTouchEvent: boolean;
+    }
     export module DataViewObjects {
-        /** Gets the value of the given object/property pair. */
+        // Gets the value of the given object/property pair.
         // tslint:disable-next-line:no-shadowed-variable
         export function getValue<T>(objects: DataViewObjects, propertyId: DataViewObjectPropertyIdentifier, defaultValue?: T): T {
 
@@ -49,7 +58,7 @@ module powerbi.extensibility.visual {
 
             return DataViewObject.getValue(object, propertyId.propertyName, defaultValue);
         }
-        /** Gets the solid color from a fill property. */
+        // Gets the solid color from a fill property. 
         export function getFillColor(objects: DataViewObjects,
                                      propertyId: DataViewObjectPropertyIdentifier, defaultColor?: string): string {
             let value: Fill;
@@ -248,6 +257,7 @@ module powerbi.extensibility.visual {
         private div1: d3.Selection<SVGElement>;
         private div2: d3.Selection<SVGElement>;
         private host: IVisualHost;
+        private events: IVisualEventService ;
         private horizBarChartContainer: d3.Selection<SVGElement>;
         private horizBarContainer: d3.Selection<SVGElement>;
         private measureTitle: d3.Selection<SVGElement>;
@@ -290,6 +300,7 @@ module powerbi.extensibility.visual {
         };
 
         constructor(options: VisualConstructorOptions) {
+            this.events=options.host.eventService;
             this.measureUpdateCounter = 0;
             this.host = options.host;
             this.selectionManager = options.host.createSelectionManager();
@@ -320,6 +331,7 @@ module powerbi.extensibility.visual {
 
         public update(options: VisualUpdateOptions): void {
             this.options = options;
+            this.events.renderingStarted(options);
             this.dataviews = options.dataViews[0];
 
             clearInterval(this.frameId);
@@ -366,15 +378,11 @@ module powerbi.extensibility.visual {
                 .attr('transform', `translate(20,${(measureTitle.fontSize)})`)
                 .attr('font-size', `${measureTitle.fontSize}px`)
                 .attr('fill', measureTitle.color);
-
             let textHeight: number;
             textHeight = textMeasurementService.measureSvgTextHeight(titleProperties);
-
             this.rootElement.select('.rootDiv').style('height', `${options.viewport.height}px`);
             this.rootElement.select('.baseDiv').style('width', '100%');
-
             this.margin = 15 / 100;
-
             this.xScale = d3.scale.ordinal()
                 // tslint:disable-next-line:typedef
                 .domain(this.viewModel.dataPoints.map(d => d.category))
@@ -396,19 +404,15 @@ module powerbi.extensibility.visual {
                 this.div1.select('.baseDiv').style('height', `${this.height}px`);
                 this.div1.select('.horizBarChart').style('height', `${this.height}px`);
             }
-
-            let yAxis: d3.svg.Axis;
+             let yAxis: d3.svg.Axis;
             yAxis = d3.svg.axis()
                 .scale(this.xScale)
                 .orient('left');
-
-            this.yAxis.attr('transform', `translate(${this.margin * this.width},0)`)
+             this.yAxis.attr('transform', `translate(${this.margin * this.width},0)`)
                 .call(yAxis);
-
             this.measureCount = options.dataViews[0].categorical.values.length;
             this.renderVisual();
-
-            if (this.measureCount > 1) {
+             if (this.measureCount > 1) {
                 if (animationSettings.show) {
                     clearInterval(this.rotationId);
                     this.rotationId = setInterval(() => this.rotation(), animationSettings.duration * 1000);
@@ -417,8 +421,12 @@ module powerbi.extensibility.visual {
                 $('.horizBarChart').on('click', () => {
                     clearInterval(this.rotationId);
                     this.rotation();
+                    if (animationSettings.show) {
+                        clearInterval(this.rotationId);
+                        this.rotationId = setInterval(() => this.rotation(), animationSettings.duration * 1000);
+                    }
                 });
-            }
+            }this.events.renderingFinished(options);
         }
 
         public rotation(): void {
@@ -537,13 +545,13 @@ module powerbi.extensibility.visual {
                     }
                 }
                 if (format && format.indexOf('%') !== -1) {
-                    formatter = ValueFormatter.create({
+                    formatter = valueFormatter.create({
                         format: format,
                         value: labelSettings.displayUnits === 0 ? 0 : labelSettings.displayUnits,
                         precision: labelSettings.strokeWidth
                     });
                 } else {
-                    formatter = ValueFormatter.create({
+                    formatter = valueFormatter.create({
                         format: format,
                         value: labelSettings.displayUnits === 0 ? displayVal : labelSettings.displayUnits,
                         precision: labelSettings.strokeWidth
@@ -560,12 +568,11 @@ module powerbi.extensibility.visual {
                     // tslint:disable-next-line:typedef
                     x: d => this.width - (this.margin * this.width) + 10
                 })
-                .text(function (d: IBarChartDataPoint): string {
-                    const value: string = THIS.applyEllipsis(d.value, formatter, labelSettings, availableWidth, measureValue);
+                .text((d: IBarChartDataPoint): string => {
+                    return THIS.applyEllipsis(d.value, formatter, labelSettings, availableWidth, measureValue);
 
-                    return value;
                 })
-                .append('title').text(function (d: IBarChartDataPoint): string {
+                .append('title').text((d: IBarChartDataPoint): string => {
                     return formatter.format(d.value);
                 });
             }
@@ -573,11 +580,15 @@ module powerbi.extensibility.visual {
             // Changing the text to ellipsis if the width of the window is small
             for (let i: number = 0; i < this.viewModel.dataPoints.length; i++) {
                 let newDataLabel: string;
+                let ticktxt: any;
+                ticktxt = $('.tick text');
+                let tick: any;
+                tick=ticktxt[i];
                 newDataLabel = THIS.applyEllipsis(this.viewModel.dataPoints[i].category, null, labelSettings, availableWidth, null);
-                if ($('.tick text') && $('.tick text')[i]) {
-                    $('.tick text')[i].textContent = newDataLabel;
-                    d3.select($('.tick text')[i]).append('title').text(this.viewModel.dataPoints[i].category);
-                    d3.select($('.tick text')[i]).attr('line-height', '10px');
+                if (ticktxt && tick) {
+                    tick.textContent = newDataLabel;
+                    d3.select(tick).append('title').text(this.viewModel.dataPoints[i].category);
+                    d3.select(tick).attr('line-height', '10px');
                 }
             }
 
