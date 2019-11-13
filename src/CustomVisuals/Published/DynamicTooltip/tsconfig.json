@@ -8,11 +8,8 @@
     "out": "./.tmp/build/visual.js"
   },
   "files": [
-    ".api/v2.1.0/PowerBI-visuals.d.ts",
-    "typings/index.d.ts",
-    "node_modules/jquery/dist/jquery.js",
-    "node_modules/lodash/lodash.js",
-    "src/tooltipServiceWrapper.ts",
+    ".api/v2.5.0/PowerBI-visuals.d.ts",
+    "node_modules/powerbi-visuals-utils-tooltiputils/lib/index.d.ts",
     "src/objectEnumerationUtility.ts",
     "src/visual.ts",
     "node_modules/powerbi-visuals-utils-typeutils/lib/index.d.ts",
