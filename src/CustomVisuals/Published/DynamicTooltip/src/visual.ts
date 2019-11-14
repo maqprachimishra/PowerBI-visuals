@@ -26,8 +26,20 @@
 
 module powerbi.extensibility.visual {
     import valueFormatter = powerbi.extensibility.utils.formatting.valueFormatter;
+    import tooltip = powerbi.extensibility.utils.tooltip;
+    import ITooltipServiceWrapper = powerbi.extensibility.utils.tooltip.ITooltipServiceWrapper;
+    import createTooltipServiceWrapper = powerbi.extensibility.utils.tooltip.createTooltipServiceWrapper;
+
+    export interface TooltipEventArgs<TData> {
+        data: TData;
+        coordinates: number[];
+        elementCoordinates: number[];
+        context: HTMLElement;
+        isTouchEvent: boolean;
+    }
+    
     export module DataViewObjects {
-        /** Gets the value of the given object/property pair. */
+        // Gets the value of the given object/property pair. */
         export function getValue<T>(objects: DataViewObjects, propertyId: DataViewObjectPropertyIdentifier, defaultValue?: T): T {
 
             if (!objects) {
@@ -112,18 +124,20 @@ module powerbi.extensibility.visual {
         private header: string;
         private opacity: number;
         private dataViews: DataView;
+        private events: IVisualEventService ;
         private imageurl: string;
         private showMeasure: boolean;
         private textPrecision: number;
         private displayUnits: number;
         private headerIndex: number;
         private measureIndex: number;
+        
 
         constructor(options: VisualConstructorOptions) {
             this.host = options.host;
             this.target = options.element;
             this.updateCount = 0;
-
+            this.events = options.host.eventService;
             this.root = d3.select(options.element);
             this.imageurl = 'https://genericvisual.blob.core.windows.net/images/Tooltip.svg';
             this.image = this.root.append('div').classed('dynamicTooltip_div', true)
@@ -135,6 +149,7 @@ module powerbi.extensibility.visual {
             this.displayUnits = 0;
         }
         public update(options: VisualUpdateOptions): void {
+            this.events.renderingStarted(options);
 
             let textSetting: Itooltip;
             textSetting = this.getDefaultTextSettings();
@@ -216,6 +231,7 @@ module powerbi.extensibility.visual {
                         this.getTooltipData(this.tooltipText, this.header, this.headerText),
                                                       (tooltipEvent: TooltipEventArgs<number>) => null);
             }
+            this.events.renderingFinished(options);
         }
         public index(nColumns: number, values: DataViewValueColumns): void {
             const iTotalColumns: number = values.length;
