@@ -1,7 +1,7 @@
 module powerbi.extensibility.visual {
 
-    export let myResources: Resources = {};
-    myResources["LanguageKey"] = {
+    export let localizedResources: Resources = {};
+    localizedResources["LanguageKey"] = {
         defaultValue: "English(English)",
         localization: {
             "ar-SA": "العربية (Arabic)",
