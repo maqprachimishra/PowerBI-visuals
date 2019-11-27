@@ -4,12 +4,12 @@
     "displayName": "Histogram with Points by MAQ Software",
     "guid": "histogramXY6E3D5691159E41859A007A262D4B0E9E",
     "visualClassName": "Visual",
-    "version": "3.1.4",
+    "version": "3.2.0",
     "description": "Histogram with Point visual is nothing but the combination of histogram and point chart to show histogram along with points.",
     "supportUrl": "https://github.com/maqsoftware/PowerBI-visuals/issues/",
     "gitHubUrl": "https://github.com/maqsoftware/PowerBI-visuals/"
   },
-  "apiVersion": "2.1.0",
+  "apiVersion": "2.5.0",
   "author": {
     "name": "MAQ Software",
     "email": "support@maqsoftware.com"

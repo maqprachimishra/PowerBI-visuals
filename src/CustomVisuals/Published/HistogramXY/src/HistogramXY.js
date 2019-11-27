@@ -3211,7 +3211,6 @@ function MAQDrawChart(DataStyle, settings, viewPort, valueFormatter) {
 
         /* Create Histogram XY chart */
         MAQ.createHistogramChart = function (chartConfigOptions) {
-            debugger
             'use strict';
             d3.select('#container').style({ "overflow-y": "hidden", "overflow-x": "hidden" })
             if (chartConfigOptions.availHeight < 170 && chartConfigOptions.availWidth < 510) {
