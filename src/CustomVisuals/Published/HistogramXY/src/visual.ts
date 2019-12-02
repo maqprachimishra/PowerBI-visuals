@@ -41,15 +41,18 @@ module powerbi.extensibility.visual {
 
         // workaround temp variable because the PBI SDK doesn't correctly identify style changes. See getSettings method.
         private prevDataViewObjects: {} = {};
+        private events: IVisualEventService ;
 
         constructor(options: VisualConstructorOptions) {
             let svg: d3.Selection<SVGAElement>;
             svg = this.svg = d3.select(options.element).append('div').classed('container', true);
             options.element.setAttribute('id', 'container');
+            this.events=options.host.eventService;
         }
 
         @logExceptions()
         public update(options: VisualUpdateOptions): void {
+            this.events.renderingStarted(options);
             d3.selectAll('#container').selectAll('*').remove();
             let width: number;
             width = options.viewport.width;
@@ -75,6 +78,7 @@ module powerbi.extensibility.visual {
                     this.histogram = MAQDrawChart(dataView, this.settings, options.viewport, valueFormatter);
                 }
             }
+            this.events.renderingFinished(options);
         }
         /**
          * Enumerates through the objects defined in the capabilities and adds the properties to the format pane
@@ -189,7 +193,7 @@ module powerbi.extensibility.visual {
         private getSettings(objects: DataViewObjects): boolean {
             let settingsChanged: boolean;
             settingsChanged = false;
-            if (typeof this.settings === 'undefined' || (JSON.stringify(objects) !== JSON.stringify(this.prevDataViewObjects))) {
+            if (typeof this.settings === undefined || (JSON.stringify(objects) !== JSON.stringify(this.prevDataViewObjects))) {
                 this.settings = {
                     showPoints: getValue<boolean>(objects, 'points', 'show', true),
                     showBars: getValue<boolean>(objects, 'bars', 'show', true),
@@ -232,9 +236,9 @@ module powerbi.extensibility.visual {
 
     // tslint:disable-next-line:no-any
     export function logExceptions(): any {
-        return function (target: Object, propertyKey: string, descriptor: TypedPropertyDescriptor<Function>)
+        return (target: Object, propertyKey: string, descriptor: TypedPropertyDescriptor<Function>)=>
             // tslint:disable-next-line:no-any
-            : any {
+            {
 
             return {
 
