@@ -28,11 +28,11 @@ module powerbi.extensibility.visual {
 
     import TextProperties = powerbi.extensibility.utils.formatting.TextProperties;
     import textMeasurementService = powerbi.extensibility.utils.formatting.textMeasurementService;
-    import ValueFormatter = powerbi.extensibility.utils.formatting.valueFormatter;
+    import valueFormatter = powerbi.extensibility.utils.formatting.valueFormatter;
     import IValueFormatter = powerbi.extensibility.utils.formatting.IValueFormatter;
 
     export module DataViewObjects {
-        /** Gets the value of the given object/property pair. */
+        //Gets the value of the given object/property pair.
         export function getValue<T>(objects: DataViewObjects, propertyId: DataViewObjectPropertyIdentifier, defaultValue?: T): T {
 
             if (!objects) {
@@ -46,27 +46,26 @@ module powerbi.extensibility.visual {
             return DataViewObject.getValue(object, propertyId.propertyName, defaultValue);
         }
 
-        /** Gets an object from objects. */
+        //Gets an object from objects.
         export function getObject(objects: DataViewObjects, objectName: string, defaultValue?: DataViewObject): DataViewObject {
             if (objects && objects[objectName]) {
-                const object: DataViewObject = <DataViewObject>objects[objectName];
 
-                return object;
+                return <DataViewObject>objects[objectName];
             } else {
                 return defaultValue;
             }
         }
 
-        /** Gets a map of user-defined objects. */
+        // Gets a map of user-defined objects.
         export function getUserDefinedObjects(objects: DataViewObjects, objectName: string): DataViewObjectMap {
             if (objects && objects[objectName]) {
-                const map: DataViewObjectMap = <DataViewObjectMap>objects[objectName];
 
-                return map;
+                return <DataViewObjectMap>objects[objectName];
+
             }
         }
 
-        /** Gets the solid color from a fill property. */
+        // Gets the solid color from a fill property. 
         export function getFillColor(
             objects: DataViewObjects,
             propertyId: DataViewObjectPropertyIdentifier, defaultColor?: string): string {
@@ -94,7 +93,7 @@ module powerbi.extensibility.visual {
 
             return propertyValue;
         }
-        /** Gets the solid color from a fill property using only a propertyName */
+        // Gets the solid color from a fill property using only a propertyName
         export function getFillColorByPropertyName(objects: DataViewObjects, propertyName: string, defaultColor?: string): string {
             const value: Fill = DataViewObject.getValue(objects, propertyName);
             if (!value || !value.solid) {
@@ -193,8 +192,11 @@ module powerbi.extensibility.visual {
         private scrollData: number[];
         private kpiDisplay: IKPISettings[];
         private contentElement: JQuery;
+        private eventService: IVisualEventService ;
+
 
         constructor(options: VisualConstructorOptions) {
+            this.eventService = options.host.eventService;
             this.visualHost = options.host;
             this.target = options.element;
             this.levelWidthPercentage = 20.5;
@@ -321,6 +323,11 @@ module powerbi.extensibility.visual {
             this.persistExpandedData();
         }
 
+
+        private obj={
+            tableContent:"",
+            gapCounter:0
+        }
         // tslint:disable-next-line:cyclomatic-complexity
         public printLevel(hierarchyId: String): string {
             const labelSettings: ILabelSettings = this.getlabelSettings(this.dataViews);
@@ -392,10 +399,8 @@ module powerbi.extensibility.visual {
             const numberOfgaps: number = this.getNumberOfGaps();
 
             const gridWidth: number = 250 + 20 + (this.numberOfMeasures * 100) + (this.numberOfMeasures * 1) + (numberOfgaps * 20);
-
             let levelMarginLeft: number = 30;
             levelMarginLeft += level * 20;
-
             for (let iRow: number = 0; iRow < levelLength; iRow++) {
                 let newHierarchyId: string;
                 currentLevelDataName = currentLevelData[iRow].value ? currentLevelData[iRow].value.toString() : '$blankData$';
@@ -404,166 +409,167 @@ module powerbi.extensibility.visual {
                 } else {
                     newHierarchyId = `${hierarchyId}-$>${currentLevelDataName}`;
                 }
-
                 //print levels column
                 tableContent += `<div class = "gridRow" style = "width:${gridWidth}px" level="${level}" eleId="" >
                 <div class = "gridLevels rowLevel${level}" style = "color:${labelSettings.labelColor};
                 background-color:${labelSettings.RowbgColor};
                 font-family:Segoe UI, wf_segoe-ui_normal, helvetica, arial, sans-serif; font-size:${labelSettings.fontSize}px">`;
-
                 if (level !== this.noOflevels - 1) {
                     tableContent += `<span status="collapsed"
                         style="margin-left:${levelMarginLeft}px" class="expandCollapseButton gridPlusIcon"></span>`;
                 }
                 tableContent += `<span class="gridText${iRow}" style="margin-left:${levelMarginLeft}px"></span></div>`;
-
                 let gapCounter: number = -1;
                 tableContent += `<div class="gapDiv"></div>`;
-
-                //print measure columns
-                for (let iMeasure: number = 0; iMeasure < this.numberOfMeasures; iMeasure++) {
-                    gapCounter += 1;
-                    if (gapCounter === labelSettings.gap && gapCounter !== 0) {
-                        tableContent += '<div class="gapDiv"></div>';
-                        gapCounter = 0;
-                    }
-                    const formatter: IValueFormatter = ValueFormatter.create({ format: this.measuresData[iMeasure].source.format });
-                    let measureValue: PrimitiveValue;
-                    let formattedMeasureData: string;
-                    let tooltipFormattedMeasureData: string;
+                let o = this.obj;
+                o=this.printmeasurecolumn(gapCounter,labelSettings,tableContent,newHierarchyId,currentLevelData,iRow,level);
+                gapCounter=o.gapCounter;
+                tableContent=o.tableContent;
+                tableContent += '</div>';
+            }
+            return tableContent;
+        }
+        
+        //print measure columns
+        private printmeasurecolumn(gapCounter :number,labelSettings:ILabelSettings,tableContent:string,newHierarchyId:string,currentLevelData:any[],iRow:number,level:number):any{
+            for (let iMeasure: number = 0; iMeasure < this.numberOfMeasures; iMeasure++) {
+                gapCounter += 1;
+                if (gapCounter === labelSettings.gap && gapCounter !== 0) {
+                    tableContent += '<div class="gapDiv"></div>';
+                    gapCounter = 0;
+                }
+                const formatter: IValueFormatter = valueFormatter.create({ format: this.measuresData[iMeasure].source.format });
+                let measureValue: PrimitiveValue;
+                let formattedMeasureData: string;
+                let tooltipFormattedMeasureData: string;
+                if (level !== this.noOflevels - 1) {
+                    measureValue = this.getAggregate(this.measuresData, iMeasure, newHierarchyId);
+                    formattedMeasureData = formatter.format(measureValue);
+                    tooltipFormattedMeasureData = formatter.format(measureValue);
+                } else {
+                    measureValue = this.measuresData[iMeasure].values[currentLevelData[iRow].key];
+                    formattedMeasureData = formatter.format(measureValue);
+                    tooltipFormattedMeasureData = formatter.format(measureValue);
+                }
+                tableContent += `<div class = "gridMeasures rowLevel${level} measure${(iMeasure + 1)}"
+                     style = "color:${labelSettings.labelColor}; background-color:${labelSettings.RowbgColor};
+                    font-family:Segoe UI, wf_segoe-ui_normal, helvetica, arial, sans-serif; font-size:${labelSettings.fontSize}px">
+                    <span class="gridText" title="${tooltipFormattedMeasureData}">${formattedMeasureData}</span>`;
+                //display indicators
+                if (this.indicatorsData[this.measuresData[iMeasure].source.displayName]) {
+                    let indicatorMeasureValue: number;
+                    let difference: number = 0;
+                    let differenceModified: string = '';
                     if (level !== this.noOflevels - 1) {
-                        measureValue = this.getAggregate(this.measuresData, iMeasure, newHierarchyId);
-                        formattedMeasureData = formatter.format(measureValue);
-                        tooltipFormattedMeasureData = formatter.format(measureValue);
+                        indicatorMeasureValue = this.getAggregate(
+                            this.indicatorsData
+                            [this.measuresData[iMeasure].source.displayName],
+                            undefined, newHierarchyId);
                     } else {
-                        measureValue = this.measuresData[iMeasure].values[currentLevelData[iRow].key];
-                        formattedMeasureData = formatter.format(measureValue);
-                        tooltipFormattedMeasureData = formatter.format(measureValue);
+                        indicatorMeasureValue = this.indicatorsData[this.measuresData[iMeasure]
+                            .source.displayName][currentLevelData[iRow].key];
                     }
-                    tableContent += `<div class = "gridMeasures rowLevel${level} measure${(iMeasure + 1)}"
-                         style = "color:${labelSettings.labelColor}; background-color:${labelSettings.RowbgColor};
-                        font-family:Segoe UI, wf_segoe-ui_normal, helvetica, arial, sans-serif; font-size:${labelSettings.fontSize}px">
-                        <span class="gridText" title="${tooltipFormattedMeasureData}">${formattedMeasureData}</span>`;
-
-                    //display indicators
-                    if (this.indicatorsData[this.measuresData[iMeasure].source.displayName]) {
-                        let indicatorMeasureValue: number;
-                        let difference: number = 0;
-                        let differenceModified: string = '';
-
-                        if (level !== this.noOflevels - 1) {
-                            indicatorMeasureValue = this.getAggregate(
-                                this.indicatorsData
-                                [this.measuresData[iMeasure].source.displayName],
-                                undefined, newHierarchyId);
-                        } else {
-                            indicatorMeasureValue = this.indicatorsData[this.measuresData[iMeasure]
-                                .source.displayName][currentLevelData[iRow].key];
-                        }
-
-                        if (measureValue !== null) {
-                            difference = parseFloat(measureValue.toString()) - indicatorMeasureValue;
-                        } else {
-                            difference = null;
-                        }
-
-                        if (difference !== null) {
-
-                            differenceModified = Math.abs(difference -
-                                parseFloat(difference.toString())) > 0 ? difference.toFixed(2) : difference.toString();
-
-                            // indicator toggle
-                            for (let l: number = 0; l < this.kpiDisplay.length; l++) {
-                                if (this.kpiDisplay[l].key === this.measuresData[iMeasure].source.displayName) {
-                                    if (this.kpiDisplay[l].value === true) {
-                                        if (difference > 0) {
-                                            tableContent += '<span title="+';
-                                            tableContent += formatter.format(parseFloat(differenceModified));
-                                            tableContent += '" class="up-red"></span>';
-                                        } else if (difference === 0) {
-                                            tableContent += '<span title="No change" class="right-grey"></span>';
-                                        } else {
-                                            if (formatter.format(parseFloat(differenceModified))[0] === '('
-                                                && formatter.format(parseFloat(differenceModified))[formatter.format(
-                                                    parseFloat(differenceModified)).length - 1] === ')') {
-                                                tableContent += '<span title="-';
-                                                tableContent += formatter.format(
-                                                    parseFloat(differenceModified)).slice(1, -1);
-                                                tableContent += '" class="down-green"></span>';
-                                            } else {
-                                                tableContent += '<span title="';
-                                                tableContent += formatter.format(parseFloat(differenceModified));
-                                                tableContent += '" class="down-green"></span>';
-                                            }
-                                        }
+                    if (measureValue !== null) {
+                        difference = parseFloat(measureValue.toString()) - indicatorMeasureValue;
+                    } else {
+                        difference = null;
+                    }
+                    if (difference !== null) {
+                        differenceModified = Math.abs(difference -
+                            parseFloat(difference.toString())) > 0 ? difference.toFixed(2) : difference.toString();
+                        // indicator toggle
+                        for (let l: number = 0; l < this.kpiDisplay.length; l++) {
+                            if (this.kpiDisplay[l].key === this.measuresData[iMeasure].source.displayName) {
+                                if (this.kpiDisplay[l].value === true) {
+                                    if (difference > 0) {
+                                        tableContent += '<span title="+';
+                                        tableContent += formatter.format(parseFloat(differenceModified));
+                                        tableContent += '" class="up-red"></span>';
+                                    } else if (difference === 0) {
+                                        tableContent += '<span title="No change" class="right-grey"></span>';
                                     } else {
-                                        if (difference > 0) {
-                                            tableContent += '<span title="+';
-                                            tableContent += formatter.format(parseFloat(differenceModified));
-                                            tableContent += '" class="up-green"></span>';
-                                        } else if (difference === 0) {
-                                            tableContent += '<span title="No change" class="right-grey"></span>';
+                                        if (formatter.format(parseFloat(differenceModified))[0] === '('
+                                            && formatter.format(parseFloat(differenceModified))[formatter.format(
+                                                parseFloat(differenceModified)).length - 1] === ')') {
+                                            tableContent += '<span title="-';
+                                            tableContent += formatter.format(
+                                                parseFloat(differenceModified)).slice(1, -1);
+                                            tableContent += '" class="down-green"></span>';
                                         } else {
-                                            if (formatter.format(parseFloat(differenceModified))[0] === '(' &&
-                                                formatter.format(parseFloat(differenceModified))[formatter.format(
-                                                    parseFloat(differenceModified)).length - 1] === ')') {
-                                                tableContent += '<span title="-';
-                                                tableContent += formatter.format(parseFloat(differenceModified)).slice(1, -1);
-                                                tableContent += '" class="down-red"></span>';
-                                            } else {
-                                                tableContent += '<span title="';
-                                                tableContent += formatter.format(parseFloat(differenceModified));
-                                                tableContent += '" class="down-red"></span>';
-                                            }
+                                            tableContent += '<span title="';
+                                            tableContent += formatter.format(parseFloat(differenceModified));
+                                            tableContent += '" class="down-green"></span>';
+                                        }
+                                    }
+                                } else {
+                                    if (difference > 0) {
+                                        tableContent += '<span title="+';
+                                        tableContent += formatter.format(parseFloat(differenceModified));
+                                        tableContent += '" class="up-green"></span>';
+                                    } else if (difference === 0) {
+                                        tableContent += '<span title="No change" class="right-grey"></span>';
+                                    } else {
+                                        if (formatter.format(parseFloat(differenceModified))[0] === '(' &&
+                                            formatter.format(parseFloat(differenceModified))[formatter.format(
+                                                parseFloat(differenceModified)).length - 1] === ')') {
+                                            tableContent += '<span title="-';
+                                            tableContent += formatter.format(parseFloat(differenceModified)).slice(1, -1);
+                                            tableContent += '" class="down-red"></span>';
+                                        } else {
+                                            tableContent += '<span title="';
+                                            tableContent += formatter.format(parseFloat(differenceModified));
+                                            tableContent += '" class="down-red"></span>';
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                    tableContent += '</div>';
                 }
                 tableContent += '</div>';
             }
-
-            return tableContent;
+            this.obj.gapCounter=gapCounter;
+            this.obj.tableContent=tableContent;return this.obj;
         }
 
         // tslint:disable-next-line:cyclomatic-complexity
         public update(options: VisualUpdateOptions): void {
-            this.target.innerHTML = `<div id = "baseContainer"></div>`;
-            let baseContainer: JQuery;
-            baseContainer = $('#baseContainer');
-            baseContainer.css('width', `${options.viewport.width}px`);
-            baseContainer.css('height', `${options.viewport.height}px`);
+            try{
+                this.eventService.renderingStarted(options);
+                // tslint:disable-next-line: no-inner-html
+                this.target.innerHTML = `<div id = "baseContainer"></div>`;
+                let baseContainer: JQuery;
+                baseContainer = $('#baseContainer');
+                baseContainer.css('width', `${options.viewport.width}px`);
+                baseContainer.css('height', `${options.viewport.height}px`);
 
-            if (options &&
-                options.dataViews[0] &&
-                options.dataViews[0].categorical &&
-                options.dataViews[0].categorical.categories[0] &&
-                options.dataViews[0].categorical.categories[0].values) {
+                this.updateStart(options,baseContainer);
 
+                this.eventService.renderingFinished(options);
+            }catch(exeption){
+                this.eventService.renderingFailed(options, exeption);
+            }
+        }
+
+        private updateStart(options: VisualUpdateOptions,baseContainer: JQuery):void{
+
+            if (options && options.dataViews[0] && options.dataViews[0].categorical && options.dataViews[0].categorical.categories[0] && options.dataViews[0].categorical.categories[0].values) {
                 this.dataViews = options.dataViews[0];
-
                 const headerSettings: IHeaderSettings = this.getheaderSettings(this.dataViews);
                 const labelSettings: ILabelSettings = this.getlabelSettings(this.dataViews);
                 const totalSettings: ITotalSettings = this.gettotalSettings(this.dataViews);
                 const indicatorSettings: IIndicatorSettings = this.getindicatorSettings(this.dataViews);
                 const prefixSettings: IPrefixSettings = this.getPrefixSettings(this.dataViews);
-
                 this.viewport = options.viewport;
                 this.totalRowsLength = options.dataViews[0].categorical.categories[0].values.length;
                 this.noOflevels = options.dataViews[0].categorical.categories.length;
-
                 this.data = options.dataViews[0].categorical;
-
                 this.measuresData = [];
                 this.indicatorsData = [];
                 this.kpiDisplay = [];
 
                 let objects: DataViewObjects;
                 objects = this.dataViews.metadata.objects;
-
                 let metadataColumns: DataViewMetadataColumn[];
                 metadataColumns = options.dataViews[0].metadata.columns;
                 let measures: string[];
@@ -573,74 +579,20 @@ module powerbi.extensibility.visual {
                 measureLiteral = 'measure';
                 measure2Literal = 'measure2';
 
-                for (let iMeasure: number = 0; iMeasure < options.dataViews[0].categorical.values.length; iMeasure++) {
-
-                    if (options.dataViews[0].categorical.values[iMeasure].source.roles[measureLiteral]) {
-
-                        this.measuresData.push(options.dataViews[0].categorical.values[iMeasure]);
-                        measures.push(options.dataViews[0].categorical.values[iMeasure].source.displayName);
-                    }
-                }
-
-                for (let iMeasure: number = 0; iMeasure < options.dataViews[0].categorical.values.length; iMeasure++) {
-                    if (options.dataViews[0].categorical.values[iMeasure].source.roles[measure2Literal]) {
-                        let currentColumn: DataViewMetadataColumn = null;
-                        let measureName: string;
-                        let prefixText: string;
-                        measureName = options.dataViews[0].categorical.values[iMeasure].source.displayName.toString();
-                        prefixText = prefixSettings.prefixText;
-                        if (prefixText && measureName.indexOf(prefixText) === 0
-                            && measures.indexOf(measureName.substr(prefixText.length, measureName.length)) >= 0) {
-                            this.indicatorsData[measureName.substr(prefixText.length, measureName.length)] =
-                                options.dataViews[0].categorical.values[iMeasure].values;
-
-                            for (let b: number = 0; b < metadataColumns.length; b++) {
-                                if (metadataColumns[b].displayName === measureName) {
-                                    currentColumn = metadataColumns[b];
-                                }
-                            }
-                            this.kpiDisplay.push({
-                                key: measureName.substr(prefixText.length, measureName.length),
-                                value: getValue<boolean>(currentColumn.objects, 'indicatorSettings', 'IndicatorSwitch', false),
-                                selectionId: { metadata: currentColumn.queryName }
-                            });
-                        }
-                    }
-                }
-
+                //update Measure,MeasureData and kpiDisplay
+                this.updateData(options,measureLiteral,measure2Literal,measures,prefixSettings,metadataColumns);
                 this.numberOfMeasures = this.measuresData.length;
-
                 const numberOfgaps: number = this.getNumberOfGaps();
-
                 const gridWidth: number = 250 + 20 + this.numberOfMeasures * 100 + this.numberOfMeasures * 1 + numberOfgaps * 20;
 
                 //Add Table headers
-                const tableHeaderRow: HTMLDivElement = document.createElement('div');
-                tableHeaderRow.setAttribute('class', 'gridRow');
-                tableHeaderRow.setAttribute('id', 'headerRow');
-                tableHeaderRow.style.width = `${gridWidth}px`;
-
+                const tableHeaderRow: HTMLDivElement= this.addTableHeader(gridWidth);
                 //level headers
-                const gridLevels: HTMLDivElement = document.createElement('div');
-                gridLevels.setAttribute('class', 'gridLevels');
-                gridLevels.style.backgroundColor = headerSettings.bgColor;
-                gridLevels.style.color = headerSettings.headerColor;
-                gridLevels.style.fontSize = `${headerSettings.fontSize}px`;
-
-                let textSpan: HTMLSpanElement = document.createElement('span');
-                textSpan.setAttribute('class', 'gridText headerLevel');
-                textSpan.setAttribute('title', options.dataViews[0].categorical.categories[0].source.displayName);
-                textSpan.textContent = options.dataViews[0].categorical.categories[0].source.displayName;
-                gridLevels.appendChild(textSpan);
-
+                const gridLevels: HTMLDivElement = this.addLevelHeader(headerSettings);
+                //text span
+                let textSpan: HTMLSpanElement = this.addTextSpan(options,gridLevels);
                 //resizers
-                let resizer: HTMLSpanElement = document.createElement('span');
-                resizer.setAttribute('columnId', 'gridLevels');
-                resizer.setAttribute('class', 'resizer');
-                resizer.style.backgroundColor = headerSettings.bgColor;
-                gridLevels.appendChild(resizer);
-                tableHeaderRow.appendChild(gridLevels);
-
+                let resizer: HTMLSpanElement = this.addResizer(gridLevels,headerSettings,tableHeaderRow);
                 //gap div
                 let gapCounter: number = -1;
                 let gapDiv: HTMLDivElement = document.createElement('div');
@@ -648,188 +600,28 @@ module powerbi.extensibility.visual {
                 tableHeaderRow.appendChild(gapDiv);
 
                 //measure headers
-                for (let iMeasure: number = 0; iMeasure < this.numberOfMeasures; iMeasure++) {
-                    gapCounter += 1;
-                    if (gapCounter === labelSettings.gap && gapCounter !== 0) {
-                        gapDiv = document.createElement('div');
-                        gapDiv.setAttribute('class', 'gapDiv');
-                        tableHeaderRow.appendChild(gapDiv);
-                        gapCounter = 0;
-                    }
-
-                    //measureNames
-                    const gridMeasures: HTMLDivElement = document.createElement('div');
-                    gridMeasures.setAttribute('class', `gridMeasures measure${(iMeasure + 1)}`);
-                    gridMeasures.style.backgroundColor = headerSettings.bgColor;
-                    gridMeasures.style.color = headerSettings.headerColor;
-                    gridMeasures.style.fontSize = `${headerSettings.fontSize}px`;
-
-                    textSpan = document.createElement('span');
-                    textSpan.setAttribute('class', 'gridText');
-                    textSpan.setAttribute('title', options.dataViews[0].categorical.values[iMeasure].source.displayName);
-                    textSpan.textContent = options.dataViews[0].categorical.values[iMeasure].source.displayName;
-                    gridMeasures.appendChild(textSpan);
-
-                    //resizers
-                    resizer = document.createElement('span');
-                    resizer.setAttribute('columnId', `measure${(iMeasure + 1)}`);
-                    resizer.setAttribute('class', 'resizer');
-                    resizer.style.backgroundColor = headerSettings.bgColor;
-                    gridMeasures.appendChild(resizer);
-                    tableHeaderRow.appendChild(gridMeasures);
-                }
-
+                gapCounter=this.measureHeaders(gapCounter,labelSettings,gapDiv,tableHeaderRow,headerSettings,options,textSpan,resizer);
                 baseContainer.append(tableHeaderRow);
-
                 //hierarchy content
-                const content: HTMLDivElement = document.createElement('div');
-                content.setAttribute('id', 'content');
-                baseContainer.append(content);
+                const content: HTMLDivElement = this.addHierarchyContent(baseContainer);
 
                 this.contentElement = $('#content');
                 this.contentElement.css('height', `${options.viewport.height - 25}px`);
                 this.contentElement.css('width', '100%');
-
                 //print table
-                const tableContent: string = this.printLevel('root');  //hierarchId=root id=root level=0
-                this.contentElement.append(tableContent);
-                let currentLevelDataName: string;
-                for (let iRow: number = 0; iRow < Visual.currentLevelData.length; iRow++) {
-                    currentLevelDataName = Visual.currentLevelData[iRow].value ?
-                        Visual.currentLevelData[iRow].value.toString() : '$blankData$';
-                    $(`.gridText${iRow}`).parent(`.gridLevels.rowLevel0`).parent(`[class="gridRow"]`)
-                        .attr('eleId', currentLevelDataName);
-                    $(`.gridText${iRow}`).parent('.gridLevels.rowLevel0').parent('[class="gridRow"]').attr('parentId', 'root');
-                    $(`.gridText${iRow}`).parent('.gridLevels.rowLevel0').parent('[class="gridRow"]')
-                        .attr('hierarchyId', currentLevelDataName);
-                    $(`.gridText${iRow}`).text(currentLevelDataName === '$blankData$' ? '(Blank)' : currentLevelDataName);
-                }
+                this.printTable();
 
                 //total row
-                const tableTotalRow: HTMLDivElement = document.createElement('div');
-                tableTotalRow.setAttribute('class', 'gridRow');
-                tableTotalRow.setAttribute('id', 'totalGridRow');
-                tableTotalRow.style.width = `${gridWidth}px`;
-
-                const totalLabel: HTMLDivElement = document.createElement('div');
-                totalLabel.setAttribute('class', 'gridLevels totalGridLevel');
-                totalLabel.style.color = totalSettings.totalColor;
-                totalLabel.style.fontSize = `${totalSettings.fontSize}px`;
-                textSpan = document.createElement('span');
-                textSpan.setAttribute('class', 'gridText totalLevel');
-                textSpan.setAttribute('title', totalSettings.totalText);
-                textSpan.textContent = totalSettings.totalText;
-                totalLabel.appendChild(textSpan);
-                tableTotalRow.appendChild(totalLabel);
+                const tableTotalRow: HTMLDivElement = this.totalRow(gridWidth);
+                const totalLabel: HTMLDivElement = this.totalLabel(totalSettings,textSpan,tableTotalRow);
 
                 //gap div
                 gapCounter = -1;
                 gapDiv = document.createElement('div');
                 gapDiv.setAttribute('class', 'gapDiv');
                 tableTotalRow.appendChild(gapDiv);
-
-                //total measures
-                for (let iMeasure: number = 0; iMeasure < this.numberOfMeasures; iMeasure++) {
-
-                    gapCounter += 1;
-                    if (gapCounter === labelSettings.gap && gapCounter !== 0) {
-                        gapDiv = document.createElement('div');
-                        gapDiv.setAttribute('class', 'gapDiv');
-                        tableTotalRow.appendChild(gapDiv);
-                        gapCounter = 0;
-                    }
-
-                    const formatter: IValueFormatter = ValueFormatter.create({ format: this.measuresData[iMeasure].source.format });
-
-                    const totalMeasures: HTMLDivElement = document.createElement('div');
-                    totalMeasures.setAttribute('class', `gridMeasures totalGridMeasures measure${(iMeasure + 1)}`);
-                    totalMeasures.style.color = totalSettings.totalColor;
-                    totalMeasures.style.fontSize = `${totalSettings.fontSize}px`;
-
-                    textSpan = document.createElement('span');
-                    textSpan.setAttribute('class', 'gridText');
-                    const measureValue: number = this.getAggregate(this.measuresData, iMeasure, 'none');
-                    textSpan.setAttribute('title', formatter.format(measureValue));
-                    textSpan.textContent = formatter.format(measureValue);
-                    totalMeasures.appendChild(textSpan);
-
-                    //display indicators
-                    if (this.indicatorsData[this.measuresData[iMeasure].source.displayName]) {
-                        let indicatorMeasureValue: number = 0;
-                        let difference: number = 0;
-                        const arrowClass: number = 0;
-                        let differenceModified: string = '';
-                        indicatorMeasureValue = this.getAggregate(
-                            this.indicatorsData[this.measuresData[iMeasure].source.displayName],
-                            undefined, 'none');
-
-                        if (measureValue !== null) {
-                            difference = measureValue - indicatorMeasureValue;
-                        } else {
-                            difference = null;
-                        }
-
-                        if (difference !== null) {
-                            differenceModified = Math.abs(difference -
-                                parseInt(difference.toString(), 10)) > 0 ? difference.toFixed(2) : difference.toString();
-                            let kpiArrow: HTMLSpanElement;
-                            kpiArrow = document.createElement('span');
-
-                            // indicator toggle
-                            for (let l: number = 0; l < this.kpiDisplay.length; l++) {
-                                if (this.kpiDisplay[l].key === this.measuresData[iMeasure].source.displayName) {
-                                    if (this.kpiDisplay[l].value === true) {
-                                        kpiArrow = document.createElement('span');
-                                        if (difference > 0) {
-                                            let addLiteral: string;
-                                            addLiteral = '+';
-                                            kpiArrow.setAttribute('class', 'up-red');
-                                            kpiArrow.setAttribute('title', addLiteral + formatter.format(parseFloat(differenceModified)));
-                                        } else if (difference === 0) {
-                                            kpiArrow.setAttribute('class', 'right-grey');
-                                            kpiArrow.setAttribute('title', 'No change');
-                                        } else {
-                                            if (formatter.format(parseFloat(differenceModified))[0] === '(' &&
-                                                formatter.format(parseFloat(differenceModified))[formatter.format(
-                                                    parseFloat(differenceModified)).length - 1] === ')') {
-                                                kpiArrow.setAttribute('class', 'down-green');
-                                                kpiArrow.setAttribute(
-                                                    'title', formatter.format(parseFloat(differenceModified)).slice(1, -1));
-                                            } else {
-                                                kpiArrow.setAttribute('class', 'down-green');
-                                                kpiArrow.setAttribute('title', formatter.format(parseFloat(differenceModified)));
-                                            }
-                                        }
-                                        totalMeasures.appendChild(kpiArrow);
-                                    } else {
-                                        if (difference > 0) {
-                                            let addLiteral: string;
-                                            addLiteral = '+';
-                                            kpiArrow.setAttribute('class', 'up-green');
-                                            kpiArrow.setAttribute('title', addLiteral + formatter.format(parseFloat(differenceModified)));
-                                        } else if (difference === 0) {
-                                            kpiArrow.setAttribute('class', 'right-grey');
-                                            kpiArrow.setAttribute('title', 'No change');
-                                        } else {
-                                            if (formatter.format(parseFloat(differenceModified))[0] === '('
-                                                && formatter.format(parseFloat(differenceModified))[formatter.format(
-                                                    parseFloat(differenceModified)).length - 1] === ')') {
-                                                kpiArrow.setAttribute('class', 'down-red');
-                                                kpiArrow.setAttribute(
-                                                    'title', formatter.format(parseFloat(differenceModified)).slice(1, -1));
-                                            } else {
-                                                kpiArrow.setAttribute('class', 'down-red');
-                                                kpiArrow.setAttribute('title', formatter.format(parseFloat(differenceModified)));
-                                            }
-                                        }
-                                        totalMeasures.appendChild(kpiArrow);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    tableTotalRow.appendChild(totalMeasures);
-                }
+                //total measure
+                gapCounter=this.totalMeasure(gapCounter,labelSettings,gapDiv,tableTotalRow,totalSettings,textSpan);
                 this.contentElement.append(tableTotalRow);
 
                 //add click listener
@@ -845,25 +637,288 @@ module powerbi.extensibility.visual {
                 } else {
                     //Print persisted hierarchy data
                     this.printExpandedData();
-
                     //Set resized columns data
                     this.setResizeData();
-
                     //Set scroll data
                     this.setScrollData();
                 }
 
                 this.prevNoOfLevels = this.noOflevels;
                 this.prevNoOfMeasures = this.numberOfMeasures;
-
                 //Add resize listener
                 this.addResizeListener();
-
                 //Add content scroll listener
                 this.addScrollListener();
-
             }
-            //end if (dataview validator)
+        }
+
+        //update Measure,MeasureData and kpiDisplay
+        public updateData(options: VisualUpdateOptions,measureLiteral:string,measure2Literal:string,measures:string[],prefixSettings: IPrefixSettings,metadataColumns: DataViewMetadataColumn[]):void{
+            
+            for (let iMeasure: number = 0; iMeasure < options.dataViews[0].categorical.values.length; iMeasure++) {
+
+                if (options.dataViews[0].categorical.values[iMeasure].source.roles[measureLiteral]) {
+
+                    this.measuresData.push(options.dataViews[0].categorical.values[iMeasure]);
+                    measures.push(options.dataViews[0].categorical.values[iMeasure].source.displayName);
+                }
+            }
+            for (let iMeasure: number = 0; iMeasure < options.dataViews[0].categorical.values.length; iMeasure++) {
+                if (options.dataViews[0].categorical.values[iMeasure].source.roles[measure2Literal]) {
+                    let currentColumn: DataViewMetadataColumn = null;
+                    let measureName: string;
+                    let prefixText: string;
+                    measureName = options.dataViews[0].categorical.values[iMeasure].source.displayName.toString();
+                    prefixText = prefixSettings.prefixText;
+                    if (prefixText && measureName.indexOf(prefixText) === 0
+                        && measures.indexOf(measureName.substr(prefixText.length, measureName.length)) >= 0) {
+                        this.indicatorsData[measureName.substr(prefixText.length, measureName.length)] =
+                            options.dataViews[0].categorical.values[iMeasure].values;
+
+                        for (let b: number = 0; b < metadataColumns.length; b++) {
+                            if (metadataColumns[b].displayName === measureName) {
+                                currentColumn = metadataColumns[b];
+                            }
+                        }
+                        this.kpiDisplay.push({
+                            key: measureName.substr(prefixText.length, measureName.length),
+                            value: getValue<boolean>(currentColumn.objects, 'indicatorSettings', 'IndicatorSwitch', false),
+                            selectionId: { metadata: currentColumn.queryName }
+                        });
+                    }
+                }
+            }
+
+        }
+
+        //measure header
+        private measureHeaders(gapCounter:number, labelSettings: ILabelSettings,gapDiv: HTMLDivElement,tableHeaderRow: HTMLDivElement,headerSettings: IHeaderSettings,options: VisualUpdateOptions, textSpan: HTMLSpanElement,resizer: HTMLSpanElement): number{
+
+            for (let iMeasure: number = 0; iMeasure < this.numberOfMeasures; iMeasure++) {
+                gapCounter += 1;
+                if (gapCounter === labelSettings.gap && gapCounter !== 0) {
+                    gapDiv = document.createElement('div');
+                    gapDiv.setAttribute('class', 'gapDiv');
+                    tableHeaderRow.appendChild(gapDiv);
+                    gapCounter = 0;
+                }
+
+                //measureNames
+                const gridMeasures: HTMLDivElement = document.createElement('div');
+                gridMeasures.setAttribute('class', `gridMeasures measure${(iMeasure + 1)}`);
+                gridMeasures.style.backgroundColor = headerSettings.bgColor;
+                gridMeasures.style.color = headerSettings.headerColor;
+                gridMeasures.style.fontSize = `${headerSettings.fontSize}px`;
+
+                textSpan = document.createElement('span');
+                textSpan.setAttribute('class', 'gridText');
+                textSpan.setAttribute('title', options.dataViews[0].categorical.values[iMeasure].source.displayName);
+                textSpan.textContent = options.dataViews[0].categorical.values[iMeasure].source.displayName;
+                gridMeasures.appendChild(textSpan);
+
+                //resizers
+                resizer = document.createElement('span');
+                resizer.setAttribute('columnId', `measure${(iMeasure + 1)}`);
+                resizer.setAttribute('class', 'resizer');
+                resizer.style.backgroundColor = headerSettings.bgColor;
+                gridMeasures.appendChild(resizer);
+                tableHeaderRow.appendChild(gridMeasures);
+            }
+            return gapCounter;
+            
+        }
+
+        //print table
+        private printTable():void{
+            const tableContent: string = this.printLevel('root');  //hierarchId=root id=root level=0
+            this.contentElement.append(tableContent);
+            let currentLevelDataName: string;
+            for (let iRow: number = 0; iRow < Visual.currentLevelData.length; iRow++) {
+                currentLevelDataName = Visual.currentLevelData[iRow].value ?
+                    Visual.currentLevelData[iRow].value.toString() : '$blankData$';
+                $(`.gridText${iRow}`).parent(`.gridLevels.rowLevel0`).parent(`[class="gridRow"]`)
+                    .attr('eleId', currentLevelDataName);
+                $(`.gridText${iRow}`).parent('.gridLevels.rowLevel0').parent('[class="gridRow"]').attr('parentId', 'root');
+                $(`.gridText${iRow}`).parent('.gridLevels.rowLevel0').parent('[class="gridRow"]')
+                    .attr('hierarchyId', currentLevelDataName);
+                $(`.gridText${iRow}`).text(currentLevelDataName === '$blankData$' ? '(Blank)' : currentLevelDataName);
+            }
+        }
+
+        //total measure
+        private totalMeasure(gapCounter:number,labelSettings: ILabelSettings,gapDiv: HTMLDivElement,tableTotalRow: HTMLDivElement,totalSettings: ITotalSettings,textSpan: HTMLSpanElement):number{
+            for (let iMeasure: number = 0; iMeasure < this.numberOfMeasures; iMeasure++) {
+                gapCounter += 1;
+                if (gapCounter === labelSettings.gap && gapCounter !== 0) {
+                    gapDiv = document.createElement('div');
+                    gapDiv.setAttribute('class', 'gapDiv');
+                    tableTotalRow.appendChild(gapDiv);
+                    gapCounter = 0;
+                }
+                const formatter: IValueFormatter = valueFormatter.create({ format: this.measuresData[iMeasure].source.format });
+                const totalMeasures: HTMLDivElement = document.createElement('div');
+                totalMeasures.setAttribute('class', `gridMeasures totalGridMeasures measure${(iMeasure + 1)}`);
+                totalMeasures.style.color = totalSettings.totalColor;
+                totalMeasures.style.fontSize = `${totalSettings.fontSize}px`;
+                textSpan = document.createElement('span');
+                textSpan.setAttribute('class', 'gridText');
+                const measureValue: number = this.getAggregate(this.measuresData, iMeasure, 'none');
+                textSpan.setAttribute('title', formatter.format(measureValue));
+                textSpan.textContent = formatter.format(measureValue);
+                totalMeasures.appendChild(textSpan);
+
+                //display indicators
+                if (this.indicatorsData[this.measuresData[iMeasure].source.displayName]) {
+                    let indicatorMeasureValue: number = 0;
+                    let difference: number = 0;
+                    const arrowClass: number = 0;
+                    let differenceModified: string = '';
+                    indicatorMeasureValue = this.getAggregate(
+                        this.indicatorsData[this.measuresData[iMeasure].source.displayName],
+                        undefined, 'none');
+
+                    if (measureValue !== null) {
+                        difference = measureValue - indicatorMeasureValue;
+                    } else {
+                        difference = null;
+                    }
+                    if (difference !== null) {
+                        differenceModified = Math.abs(difference -
+                            parseInt(difference.toString(), 10)) > 0 ? difference.toFixed(2) : difference.toString();
+                        let kpiArrow: HTMLSpanElement;
+                        kpiArrow = document.createElement('span');
+
+                        // indicator toggle
+                        for (let l: number = 0; l < this.kpiDisplay.length; l++) {
+                            if (this.kpiDisplay[l].key === this.measuresData[iMeasure].source.displayName) {
+                                if (this.kpiDisplay[l].value === true) {
+                                    kpiArrow = document.createElement('span');
+                                    if (difference > 0) {
+                                        let addLiteral: string;
+                                        addLiteral = '+';
+                                        kpiArrow.setAttribute('class', 'up-red');
+                                        kpiArrow.setAttribute('title', addLiteral + formatter.format(parseFloat(differenceModified)));
+                                    } else if (difference === 0) {
+                                        kpiArrow.setAttribute('class', 'right-grey');
+                                        kpiArrow.setAttribute('title', 'No change');
+                                    } else {
+                                        if (formatter.format(parseFloat(differenceModified))[0] === '(' &&
+                                            formatter.format(parseFloat(differenceModified))[formatter.format(
+                                                parseFloat(differenceModified)).length - 1] === ')') {
+                                            kpiArrow.setAttribute('class', 'down-green');
+                                            kpiArrow.setAttribute(
+                                                'title', formatter.format(parseFloat(differenceModified)).slice(1, -1));
+                                        } else {
+                                            kpiArrow.setAttribute('class', 'down-green');
+                                            kpiArrow.setAttribute('title', formatter.format(parseFloat(differenceModified)));
+                                        }
+                                    }
+                                    totalMeasures.appendChild(kpiArrow);
+                                } else {
+                                    if (difference > 0) {
+                                        let addLiteral: string;
+                                        addLiteral = '+';
+                                        kpiArrow.setAttribute('class', 'up-green');
+                                        kpiArrow.setAttribute('title', addLiteral + formatter.format(parseFloat(differenceModified)));
+                                    } else if (difference === 0) {
+                                        kpiArrow.setAttribute('class', 'right-grey');
+                                        kpiArrow.setAttribute('title', 'No change');
+                                    } else {
+                                        if (formatter.format(parseFloat(differenceModified))[0] === '('
+                                            && formatter.format(parseFloat(differenceModified))[formatter.format(
+                                                parseFloat(differenceModified)).length - 1] === ')') {
+                                            kpiArrow.setAttribute('class', 'down-red');
+                                            kpiArrow.setAttribute(
+                                                'title', formatter.format(parseFloat(differenceModified)).slice(1, -1));
+                                        } else {
+                                            kpiArrow.setAttribute('class', 'down-red');
+                                            kpiArrow.setAttribute('title', formatter.format(parseFloat(differenceModified)));
+                                        }
+                                    }
+                                    totalMeasures.appendChild(kpiArrow);
+                                }
+                            }
+                        }
+                    }
+                }
+                tableTotalRow.appendChild(totalMeasures);
+            }
+            return gapCounter;
+
+        }
+
+        //add table header
+        private addTableHeader(gridWidth: number):HTMLDivElement{
+            let tableHeaderRow: HTMLDivElement= document.createElement('div');
+            tableHeaderRow.setAttribute('class', 'gridRow');
+            tableHeaderRow.setAttribute('id', 'headerRow');
+            tableHeaderRow.style.width = `${gridWidth}px`;
+            return tableHeaderRow;
+
+        }
+
+        //add table Header
+        private addLevelHeader(headerSettings: IHeaderSettings):HTMLDivElement{
+            let gridLevels: HTMLDivElement = document.createElement('div');
+            gridLevels.setAttribute('class', 'gridLevels');
+            gridLevels.style.backgroundColor = headerSettings.bgColor;
+            gridLevels.style.color = headerSettings.headerColor;
+            gridLevels.style.fontSize = `${headerSettings.fontSize}px`;
+            return gridLevels;
+        }
+
+        //add text Span
+        private addTextSpan(options: VisualUpdateOptions, gridLevels: HTMLDivElement):HTMLSpanElement{
+            let textSpan: HTMLSpanElement = document.createElement('span');
+            textSpan.setAttribute('class', 'gridText headerLevel');
+            textSpan.setAttribute('title', options.dataViews[0].categorical.categories[0].source.displayName);
+            textSpan.textContent = options.dataViews[0].categorical.categories[0].source.displayName;
+            gridLevels.appendChild(textSpan);
+            return textSpan;
+        }
+
+        //add resizer
+        private addResizer(gridLevels: HTMLDivElement,headerSettings: IHeaderSettings,tableHeaderRow: HTMLDivElement):HTMLSpanElement{
+            let resizer: HTMLSpanElement = document.createElement('span');
+            resizer.setAttribute('columnId', 'gridLevels');
+            resizer.setAttribute('class', 'resizer');
+            resizer.style.backgroundColor = headerSettings.bgColor;
+            gridLevels.appendChild(resizer);
+            tableHeaderRow.appendChild(gridLevels);
+            return resizer;
+
+        }
+
+        //add hierarchy content
+        private addHierarchyContent(baseContainer: JQuery):HTMLDivElement{
+            let content: HTMLDivElement = document.createElement('div');
+            content.setAttribute('id', 'content');
+            baseContainer.append(content);
+            return content;
+        }
+
+        //total row
+        private totalRow(gridWidth: number):HTMLDivElement{
+            let tableTotalRow: HTMLDivElement = document.createElement('div');
+            tableTotalRow.setAttribute('class', 'gridRow');
+            tableTotalRow.setAttribute('id', 'totalGridRow');
+            tableTotalRow.style.width = `${gridWidth}px`;
+            return tableTotalRow;
+        }
+
+        //total Label
+        private totalLabel(totalSettings: ITotalSettings,textSpan: HTMLSpanElement,tableTotalRow: HTMLDivElement):HTMLDivElement{
+            let totalLabel: HTMLDivElement = document.createElement('div');
+            totalLabel.setAttribute('class', 'gridLevels totalGridLevel');
+            totalLabel.style.color = totalSettings.totalColor;
+            totalLabel.style.fontSize = `${totalSettings.fontSize}px`;
+            textSpan = document.createElement('span');
+            textSpan.setAttribute('class', 'gridText totalLevel');
+            textSpan.setAttribute('title', totalSettings.totalText);
+            textSpan.textContent = totalSettings.totalText;
+            totalLabel.appendChild(textSpan);
+            tableTotalRow.appendChild(totalLabel);
+            return totalLabel;
         }
 
         public addClickListener(currentContext: JQuery): void {
@@ -933,7 +988,7 @@ module powerbi.extensibility.visual {
             let calculatedGridWidth: number;
             const iThis: Visual = this;
 
-            $('.resizer').mousedown(function (e: JQueryMouseEventObject): void {
+            $('.resizer').mousedown( function (e: JQueryMouseEventObject): void{
                 columnClass = this.getAttribute('columnId');
                 start = $(`.${columnClass}`);
                 pressed = true;
@@ -942,7 +997,7 @@ module powerbi.extensibility.visual {
                 startGridWidth = $('.gridRow').width();
             });
 
-            $(document).mousemove(function (e: JQueryMouseEventObject): void {
+            $(document).mousemove( (e: JQueryMouseEventObject)=> {
                 if (pressed) {
                     moved = true;
                     xDiff = (e.pageX - startX);
@@ -954,7 +1009,7 @@ module powerbi.extensibility.visual {
                 }
             });
 
-            $(document).mouseup(function (): void {
+            $(document).mouseup( ()=> {
                 let gridRowLiteral: string;
                 gridRowLiteral = 'gridRow';
 
@@ -1020,7 +1075,9 @@ module powerbi.extensibility.visual {
                 // tslint:disable-next-line:no-any
                 const parsedString: any = JSON.parse(getJSONString);
                 this.resizeData = parsedString;
-                for (const iData in this.resizeData) {
+
+
+                for (const iData of this.resizeData) {
                     if (iData === 'gridRow') {
                         const noOfGaps: number = this.getNumberOfGaps();
                         $(`.${iData}`).width(this.resizeData[iData] + (noOfGaps * 20));
