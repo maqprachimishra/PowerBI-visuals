@@ -124,7 +124,9 @@
                 },
                 "textPrecision": {
                     "displayName": "Decimal Places",
+                    "description": "Decimal value (Max 4 Places)",
                     "type": { "numeric": true }
+                    
                 }
             }
         }
