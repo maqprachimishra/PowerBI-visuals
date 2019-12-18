@@ -1,6 +1,31 @@
+/*
+ *  Power BI Visual CLI
+ *
+ *  Copyright (c) Microsoft Corporation
+ *  All rights reserved.
+ *  MIT License
+ *
+ *  Permission is hereby granted, free of charge, to any person obtaining a copy
+ *  of this software and associated documentation files (the ""Software""), to deal
+ *  in the Software without restriction, including without limitation the rights
+ *  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ *  copies of the Software, and to permit persons to whom the Software is
+ *  furnished to do so, subject to the following conditions:
+ *
+ *  The above copyright notice and this permission notice shall be included in
+ *  all copies or substantial portions of the Software.
+ *
+ *  THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ *  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ *  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ *  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ *  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ *  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ *  THE SOFTWARE.
+ */
 module powerbi.extensibility.visual {
     import tooltip = powerbi.extensibility.utils.tooltip;
-    import dataLabelUtils = powerbi.extensibility.utils.chart.dataLabel.utils;
+    import utils = powerbi.extensibility.utils.chart.dataLabel.utils;
     import VisualTooltipDataItem = powerbi.extensibility.VisualTooltipDataItem;
     import DataViewObjects = powerbi.extensibility.utils.dataview.DataViewObjects;
     import Selection = d3.Selection;
@@ -11,12 +36,12 @@ module powerbi.extensibility.visual {
     import EnumerateVisualObjectInstancesOptions = powerbi.EnumerateVisualObjectInstancesOptions;
     import createLegend = powerbi.extensibility.utils.chart.legend.createLegend;
     import ILegend = powerbi.extensibility.utils.chart.legend.ILegend;
-    import Legend = powerbi.extensibility.utils.chart.legend;
+    import legend = powerbi.extensibility.utils.chart.legend;
     import LegendData = powerbi.extensibility.utils.chart.legend.LegendData;
     import LegendDataPoint = powerbi.extensibility.utils.chart.legend.LegendDataPoint;
     import LegendIcon = powerbi.extensibility.utils.chart.legend.LegendIcon;
     import LegendPosition = powerbi.extensibility.utils.chart.legend.LegendPosition;
-    import SVGUtil = powerbi.extensibility.utils.svg;
+    import svg = powerbi.extensibility.utils.svg;
     import ClassAndSelector = powerbi.extensibility.utils.svg.CssConstants.ClassAndSelector;
     import createClassAndSelector = powerbi.extensibility.utils.svg.CssConstants.createClassAndSelector;
     import IInteractivityService = powerbi.extensibility.utils.interactivity.IInteractivityService;
@@ -26,6 +51,16 @@ module powerbi.extensibility.visual {
     import IValueFormatter = powerbi.extensibility.utils.formatting.IValueFormatter;
     import TextProperties = powerbi.extensibility.utils.formatting.TextProperties;
     import textMeasurementService = powerbi.extensibility.utils.formatting.textMeasurementService;
+    import ITooltipServiceWrapper = powerbi.extensibility.utils.tooltip.ITooltipServiceWrapper;
+    import createTooltipServiceWrapper = powerbi.extensibility.utils.tooltip.createTooltipServiceWrapper;
+ 
+    export interface TooltipEventArgs<TData> {
+        data: TData;
+        coordinates: number[];
+        elementCoordinates: number[];
+        context: HTMLElement;
+        isTouchEvent: boolean;
+    }
 
     interface ITooltipService {
         enabled(): boolean;
@@ -208,6 +243,7 @@ module powerbi.extensibility.visual {
         private container: d3.Selection<SVGElement>;
         private host: IVisualHost;
         private prevDataViewObjects: DataViewObjects = {};
+        private events: IVisualEventService ;
         private settings: {
             colors: string,
             labelPrecision: number,
@@ -240,13 +276,14 @@ module powerbi.extensibility.visual {
             this.groupInner.append('text');
             this.groupInner.append('line').attr('id', 'line1');
             this.groupInner.append('line').attr('id', 'line2');
+            this.events = options.host.eventService;
 
             this.body = d3.select(options.element)
                 .style({
                     cursor: 'default'
                 });
             this.legend = createLegend(
-                $(options.element),
+                options.element,
                 this.isInteractiveChart,
                 this.interactivityService,
                 true,
@@ -254,8 +291,8 @@ module powerbi.extensibility.visual {
             );
         }//Convert the dataview into its view model
         //All the variable will be populated with the value we have passed
-        public static converter(dataView: DataView): IProgressIndicatorValues {
-            const data: IProgressIndicatorValues = CircularGauge.getDefaultData();
+        public static CONVERTER(dataView: DataView): IProgressIndicatorValues {
+            const data: IProgressIndicatorValues = CircularGauge.GETDEFAULTDATA();
             if (dataView && dataView.table) {
                 const len: number = dataView.table.rows[0].length;
                 let iCount: number;
@@ -286,7 +323,7 @@ module powerbi.extensibility.visual {
 
             return data; //Data object we are returning here to the update function
         }
-        public static getDefaultData(): IProgressIndicatorValues {
+        public static GETDEFAULTDATA(): IProgressIndicatorValues {
             return {
                 actual: 0,
                 target: -1,
@@ -354,7 +391,6 @@ module powerbi.extensibility.visual {
                     }
                 }
             }
-
             return defaultValue;
         }
         private static getLegendValue<T>(dataView: DataView, key: string, defaultValue: T): T {
@@ -371,47 +407,33 @@ module powerbi.extensibility.visual {
                     }
                 }
             }
-
             return defaultValue;
         }
 
         //Drawing the visual
         public update(options: VisualUpdateOptions): void {
+            this.events.renderingStarted(options);
             this.viewport = options.viewport;
             const dataView: DataView = this.dataView = options.dataViews[0];
-            const data2: IProgressIndicatorValues = this.data = CircularGauge.converter(dataView); //calling Converter function
-            this.svg
-                .selectAll('.legend #legendGroup .legendItem, .legend #legendGroup .legendTitle, .legend #legendGroup .naletrow')
-                .empty();
+            const data2: IProgressIndicatorValues = this.data = CircularGauge.CONVERTER(dataView); //calling Converter function
+            this.svg.selectAll('.legend #legendGroup .legendItem, .legend #legendGroup .legendTitle, .legend #legendGroup .naletrow').empty();
             const data: number = data2.actual;
             const max: number = data2.target;
             $('.errmsg').remove();
             let checkActual: boolean = false;
-
             if (dataView && dataView.table) {
                 for (let i: number = 0; i < dataView.metadata.columns.length; i++) {
                     if (options.dataViews[0].metadata.columns[i].roles.hasOwnProperty('ActualValue')) {
                         checkActual = true;
-                    }
-                }
+                    } }
                 if (!checkActual) {
                     this.showMsg('Please select "Actual value" field', 180);
-
                     return;
                 } else {
                     $('#line1').attr('display', 'visible');
                     $('#line2').attr('display', 'visible');
-                }
-            }
-
-            if (data < 0 || max < 0) {
-                this.showMsg('Negative values are not supported.', 250);
-
-                return;
-            }
-            if (typeof (data) === 'object' || typeof (max) === 'object') {
-                this.showMsg('Data format is not supported.', 170);
-
+                } }
+            if (this.updateValidate(data, max)){
                 return;
             }
             const viewport: IViewport = options.viewport;
@@ -429,46 +451,11 @@ module powerbi.extensibility.visual {
                 objects = this.dataView.metadata.objects;
             }
             if (objects) {
-                labelSettings = this.cardFormatSetting.labelSettings;
-                labelSettings.labelColor = DataViewObjects
-                    .getFillColor(objects, progressIndicatorProps.labels.color, labelSettings.labelColor);
-                labelSettings.precision = DataViewObjects
-                    .getValue(objects, progressIndicatorProps.labels.labelPrecision, labelSettings.precision);
-                // The precision can't go below 0
-                if (labelSettings.precision != null) {
-                    this.cardFormatSetting.labelSettings.precision = (labelSettings.precision >= 0) ? labelSettings.precision : 0;
-                }
-                this.data.isPie = DataViewObjects
-                    .getValue(objects, progressIndicatorProps.custom.show, this.data.isPie);
-                this.data.ringWidth = DataViewObjects
-                    .getValue(objects, progressIndicatorProps.custom.ringWidth, this.data.ringWidth);
-                this.cardFormatSetting.labelSettings.fontSize = DataViewObjects
-                    .getValue(objects, progressIndicatorProps.labels.fontSize, labelSettings.fontSize);
-                const label: string = 'labels';
-                const show: string = 'show';
-                const legendText: string = 'legend';
-                const labels: DataViewObject = dataView.metadata.objects[label];
-                if (labels) {
-                    if (labels[show] != null) {
-                        showDataLabel = <boolean>labels[show];
-                    }
-                }
-                const legend: DataViewObject = dataView.metadata.objects[legendText];
-                if (legend) {
-                    if (legend[show] != null) {
-                        this.showLegend = <boolean>legend[show];
-                    }
-                }
+                showDataLabel = this.updateLabelSettings(labelSettings, objects, dataView, showDataLabel);
             }
-
             let percentCompleted: number = (data2.actual / max);
-            percentCompleted = isNaN(percentCompleted) ||
-                 !isFinite(percentCompleted) ?
-                ((data2.actual > max) ? 1 : 0) : (percentCompleted > 1) ? 1 : ((percentCompleted < 0) ? 0 : percentCompleted);
-
-            this.cardFormatSetting
-                .labelSettings
-                .precision = this.cardFormatSetting.labelSettings.precision < 4 ? this.cardFormatSetting.labelSettings.precision : 4;
+            percentCompleted = isNaN(percentCompleted) || !isFinite(percentCompleted) ?((data2.actual > max) ? 1 : 0) : (percentCompleted > 1) ? 1 : ((percentCompleted < 0) ? 0 : percentCompleted);
+            this.cardFormatSetting.labelSettings.precision = this.cardFormatSetting.labelSettings.precision < 4 ? this.cardFormatSetting.labelSettings.precision : 4;
             if (this.cardFormatSetting.labelSettings.precision > 4) {
                 this.cardFormatSetting.labelSettings.precision = 0;
             }
@@ -479,64 +466,69 @@ module powerbi.extensibility.visual {
                 text: `${percentage}%`,
                 fontFamily: 'sans-serif',
                 fontSize: `${((4 / 3) * fontSize)}px`
-                //fontSize: fontSize + 'pt'
             };
             const textWidth: number = powerbi.extensibility.utils.formatting.textMeasurementService.measureSvgTextWidth(textProperties);
             const textHeight: number = powerbi.extensibility.utils.formatting.textMeasurementService.measureSvgTextHeight(textProperties);
-
             const settings: CircularGaugeSettings = CircularGaugeSettings.parse<CircularGaugeSettings>(dataView);
-
-            //By default, only category-1
-            this.range = {
-                range1: 0,
-                value1: CircularGauge.getFill(this.dataView, 'value1').solid.color,
-                range2: 0,
-                value2: CircularGauge.getFill(this.dataView, 'value2').solid.color,
-                range3: 0,
-                value3: CircularGauge.getFill(this.dataView, 'value3').solid.color,
-                range4: 0,
-                value4: CircularGauge.getFill(this.dataView, 'value4').solid.color
-            };
-
-            this.data.actualColor = CircularGauge.getFill(this.dataView, 'ActualFillColor').solid.color;
-            this.data.targetColor = CircularGauge.getFill(this.dataView, 'ComparisonFillColor').solid.color;
-
-            this.range.range1 = CircularGauge.getValue(this.dataView, 'legend', 'range1', null);
-            if (this.range.range1 !== null && this.range.range1 >= 100 || this.range.range1 <= 0) {
-                this.range.range1 = null;
-            }
-            this.range.range2 = CircularGauge.getValue(this.dataView, 'legend', 'range2', null);
-            if (this.range.range1 === null && this.range.range2 !== null) {
-                this.range.range2 = null;
-            } else if (this.range.range2 <= this.range.range1 || this.range.range2 > 100) {
-                this.range.range2 = null;
-            }
-
-            this.range.range3 = CircularGauge.getValue(this.dataView, 'legend', 'range3', null);
-            if (this.range.range2 === null && this.range.range3 !== null) {
-                this.range.range3 = null;
-            } else if (this.range.range3 <= this.range.range2 || this.range.range3 > 100) {
-                this.range.range3 = null;
-            }
-
-            //Category-4, being the last category, always ends at maximum value
-            this.range.range4 = 100;
-
+            this.visualPrint();
             const xnum: number = this.range.range4;
-            const legendData: Legend.LegendData = this.createLegendData(this.dataView, this.host, settings);
+            const legendData: legend.LegendData = this.createLegendData(this.dataView, this.host, settings);
             this.viewModel = {
                 dataView: this.dataView,
                 settings: settings,
                 legendData: legendData
             };
-
             let height: number = viewport.height;
             let width: number = viewport.width;
-            this.svg.attr('width', `${width}px`);
+            this.targetColor(height,width,legendData.dataPoints.length,percentage);
+            height = viewport.height;
+            width = viewport.width;
+            this.updateSvg(width, height, objects);
+            let outerRadius: number = ((((width / 2) - (textWidth + 17)) <((height / 2) - (textHeight)) ? ((width / 2) - (textWidth + 17)) : ((height / 2) - (textHeight))));
+            outerRadius = outerRadius - (outerRadius * 0.1);
+            let innerRadius: number;
+            this.data.ringWidth = this.data.ringWidth < 1 ? 1 : this.data.ringWidth;
+            innerRadius = outerRadius - this.data.ringWidth;
+            let arc: any;
+            let arc1: any;
+            let dataLabelText: string = `${percentage}%`;
+            const dataLabelStyle: string = CircularGauge.getValue<string>(dataView, 'labels', 'labelStyle', 'Percentage');
+            let index: number;
+            for (let i: number = 0; i < options.dataViews[0].metadata.columns.length; i++) {
+                if (options.dataViews[0].metadata.columns[i].roles.hasOwnProperty('ActualValue')) {
+                    index = i;
+                } }
+            let precision: number = DataViewObjects.getValue(
+                    this.dataView.metadata.objects, progressIndicatorProps.labels.labelPrecision,
+                    this.cardFormatSetting.labelSettings.precision);
+            precision = precision < 5 ? precision : 5;
+            let tooltipText: string;
+            let ret: string[] = this.onHoverValue(data, dataView, dataLabelStyle, dataLabelText, tooltipText, percentage, options, index);
+            dataLabelText = ret[0];
+            tooltipText = ret[1];
+            this.printVisual(textProperties, dataLabelText, fontSize, viewport, outerRadius, innerRadius, showDataLabel, arc, arc1, percentCompleted, textHeight, tooltipText, width, height);
+            this.onHoverDisplay(options, index, data, percentage, dataView);
+            this.events.renderingFinished(options);
+        }
+
+        private updateValidate(data: number, max: number): boolean {
+            if (data < 0 || max < 0) {
+                this.showMsg('Negative values are not supported.', 250);
+                return true;
+            }
+            if (typeof (data) === 'object' || typeof (max) === 'object') {
+                this.showMsg('Data format is not supported.', 170);
+                return true;
+            }
+            return false;
+        }
+
+        private targetColor(height: number,width: number,len: number,percentage: string): void {
             this.svg.attr('height', `${height}px`);
+            this.svg.attr('width', `${width}px`);
             this.renderLegend();
 
-            for (let i: number = 0; i < legendData.dataPoints.length; i++) {
+            for (let i: number = 0; i < len; i++) {
                 if (i === 0) {
                     if (parseInt(percentage, 10) >= 0 && parseInt(percentage, 10) <= this.h1) {
                         this.data.targetColor = this.range.value1;
@@ -555,45 +547,12 @@ module powerbi.extensibility.visual {
                     }
                 }
             }
-            height = viewport.height;
-            width = viewport.width;
-            this.svg.attr('width', width)
-                .attr('height', height);
-            this.data.actualColor = powerbi.extensibility.utils.dataview.DataViewObjects
-                .getFillColor(objects, progressIndicatorProps.general.ActualFillColor, this.data.actualColor);
-            if (!this.showLegend) {
-                this.data.targetColor = powerbi.extensibility.utils.dataview.DataViewObjects
-                    .getFillColor(objects, progressIndicatorProps.general.ComparisonFillColor, '#01B8AA');
-            }
-            let outerRadius: number = ((((width / 2) - (textWidth + 17)) <
-            ((height / 2) - (textHeight)) ? ((width / 2) - (textWidth + 17)) : ((height / 2) - (textHeight))));
+        }
 
-            outerRadius = outerRadius - (outerRadius * 0.1);
-            let innerRadius: number;
-            this.data.ringWidth = this.data.ringWidth < 1 ? 1 : this.data.ringWidth;
-            innerRadius = outerRadius - this.data.ringWidth;
-            // tslint:disable-next-line:no-any
-            let arc: any;
-            // tslint:disable-next-line:no-any
-            let arc1: any;
-            let dataLabelText: string = `${percentage}%`;
-            const dataLabelStyle: string = CircularGauge.getValue<string>(dataView, 'labels', 'labelStyle', 'Percentage');
-            let index: number;
-            for (let i: number = 0; i < options.dataViews[0].metadata.columns.length; i++) {
-                if (options.dataViews[0].metadata.columns[i].roles.hasOwnProperty('ActualValue')) {
-                    index = i;
-                }
-            }
-            let precision: number = DataViewObjects
-                .getValue(
-                    this.dataView.metadata.objects,
-                    progressIndicatorProps.labels.labelPrecision,
-                    this.cardFormatSetting.labelSettings.precision);
-            precision = precision < 5 ? precision : 5;
+        private onHoverValue(data: number, dataView: DataView, dataLabelStyle: string, dataLabelText: string , tooltipText: string, percentage: string, options: VisualUpdateOptions, index: number):string[] {
             const dataCopy: string = this.formatValues(data, CircularGauge.getValue<string>(dataView, 'labels', 'labelUnit', 'Auto'));
             const iValueFormatter: IValueFormatter = valueFormatter.create({ format: options.dataViews[0].metadata.columns[index].format });
             const dataCopy1: string = iValueFormatter.format(data);
-            let tooltipText: string;
             switch (dataLabelStyle) {
                 case 'Percentage':
                     dataLabelText = `${percentage}%`;
@@ -624,7 +583,88 @@ module powerbi.extensibility.visual {
                     tooltipText = `${options.dataViews[0].metadata.columns[0].displayName}, ${dataCopy1}, ${percentage}%`;
                     break;
                 default:
+                    let ret: string[];
+                    ret[0] = dataLabelText;
+                    ret[1] = tooltipText;
+                    return ret;
             }
+            
+            return [dataLabelText, tooltipText];
+        }
+
+        private updateLabelSettings(labelSettings: { show?: boolean | void; precision: any; labelColor: any; fontSize: any; }, 
+            objects: DataViewObjects, dataView: DataView, showDataLabel: boolean): boolean {
+            labelSettings = this.cardFormatSetting.labelSettings;
+            labelSettings.labelColor = DataViewObjects
+                .getFillColor(objects, progressIndicatorProps.labels.color, labelSettings.labelColor);
+            labelSettings.precision = DataViewObjects
+                .getValue(objects, progressIndicatorProps.labels.labelPrecision, labelSettings.precision);
+            // The precision can't go below 0
+            if (labelSettings.precision != null) {
+                this.cardFormatSetting.labelSettings.precision = (labelSettings.precision >= 0) ? labelSettings.precision : 0;
+            }
+            this.data.isPie = DataViewObjects
+                .getValue(objects, progressIndicatorProps.custom.show, this.data.isPie);
+            this.data.ringWidth = DataViewObjects
+                .getValue(objects, progressIndicatorProps.custom.ringWidth, this.data.ringWidth);
+            this.cardFormatSetting.labelSettings.fontSize = DataViewObjects
+                .getValue(objects, progressIndicatorProps.labels.fontSize, labelSettings.fontSize);
+            const label: string = 'labels';
+            const show: string = 'show';
+            const legendText: string = 'legend';
+            const labels: DataViewObject = dataView.metadata.objects[label];
+            if (labels) {
+                if (labels[show] != null) {
+                    showDataLabel = <boolean>labels[show];
+                }
+            }
+            const legend: DataViewObject = dataView.metadata.objects[legendText];
+            if (legend) {
+                if (legend[show] != null) {
+                    this.showLegend = <boolean>legend[show];
+                }
+            }
+
+            return showDataLabel;
+        }
+
+        private setDimAttr(outerRadius: number, h: number, x: number, y:number, y1: number, fontSize: number, sTextNew: string, tooltipText: string): void {
+            this.groupInner
+                    .select('text')
+                    .attr('x', ((x / h) * outerRadius * 1.1) + 17)
+                    .attr('y', y1)
+                    .attr('text-anchor', 'start')
+                    .attr('font-size', `${fontSize}pt`)
+                    .text(sTextNew)
+                    .attr('fill', this.cardFormatSetting.labelSettings.labelColor)
+                    .append('text:title')
+                    .text(tooltipText);
+
+                this.groupInner.select('line#line1')
+                    .attr('x1', (x / h) * outerRadius * 1.02)
+                    .attr('y1', (y / h) * outerRadius * 1.02)
+                    .attr('x2', ((x / h) * outerRadius * 1.1))
+                    .attr('y2', (y / h) * outerRadius * 1.1)
+                    .attr('style', 'stroke:#DDDDDD;stroke-width:1');
+                this.groupInner.select('line#line2')
+                    .attr('x1', (x / h) * outerRadius * 1.1)
+                    .attr('y1', (y / h) * outerRadius * 1.1)
+                    .attr('x2', ((x / h) * outerRadius * 1.1) + 15)
+                    .attr('y2', (y / h) * outerRadius * 1.1)
+                    .attr('style', 'stroke:#DDDDDD;stroke-width:1');
+        }
+
+        private updateSvg(width: number, height: number, objects: DataViewObjects): void {
+            this.svg.attr('width', width).attr('height', height);
+            this.data.actualColor = powerbi.extensibility.utils.dataview.DataViewObjects.getFillColor(objects, progressIndicatorProps.general.ActualFillColor, this.data.actualColor);
+            if (!this.showLegend) {
+                this.data.targetColor = powerbi.extensibility.utils.dataview.DataViewObjects.getFillColor(objects, progressIndicatorProps.general.ComparisonFillColor, '#01B8AA');
+            }
+        }
+
+        private printVisual(textProperties: powerbi.extensibility.utils.formatting.TextProperties, dataLabelText: string, 
+            fontSize:number, viewport: IViewport, outerRadius: number, innerRadius: number, showDataLabel: boolean, 
+            arc: any, arc1: any, percentCompleted: number, textHeight: number, tooltipText: string, width: number, height: number) {
             textProperties = {
                 text: dataLabelText,
                 fontFamily: 'sans-serif',
@@ -645,8 +685,6 @@ module powerbi.extensibility.visual {
                 fontFamily: 'Segoe UI',
                 fontSize: `${((4 / 3) * fontSize)}px`
             };
-            const fTextWidthNew: number = textMeasurementService.measureSvgTextWidth(textPropertiesNew);
-            const iTextHeightNew: number = textMeasurementService.measureSvgTextHeight(textPropertiesNew);
             if (innerRadius > 0.5 && showDataLabel && iNumofCharsAllowed >= 3) {
                 if (!this.data.isPie) {
                     innerRadius = 0;
@@ -678,29 +716,9 @@ module powerbi.extensibility.visual {
                 } else {
                     y1 = ((y / h) * outerRadius * 1.1) + (textHeight / 3);
                 }
-                this.groupInner
-                    .select('text')
-                    .attr('x', ((x / h) * outerRadius * 1.1) + 17)
-                    .attr('y', y1)
-                    .attr('text-anchor', 'start')
-                    .attr('font-size', `${fontSize}pt`)
-                    .text(sTextNew)
-                    .attr('fill', this.cardFormatSetting.labelSettings.labelColor)
-                    .append('text:title')
-                    .text(tooltipText);
+                // set outer radius, x, y
+                this.setDimAttr(outerRadius,h,x,y,y1,fontSize,sTextNew,tooltipText);
 
-                this.groupInner.select('line#line1')
-                    .attr('x1', (x / h) * outerRadius * 1.02)
-                    .attr('y1', (y / h) * outerRadius * 1.02)
-                    .attr('x2', ((x / h) * outerRadius * 1.1))
-                    .attr('y2', (y / h) * outerRadius * 1.1)
-                    .attr('style', 'stroke:#DDDDDD;stroke-width:1');
-                this.groupInner.select('line#line2')
-                    .attr('x1', (x / h) * outerRadius * 1.1)
-                    .attr('y1', (y / h) * outerRadius * 1.1)
-                    .attr('x2', ((x / h) * outerRadius * 1.1) + 15)
-                    .attr('y2', (y / h) * outerRadius * 1.1)
-                    .attr('style', 'stroke:#DDDDDD;stroke-width:1');
                 if (percentCompleted < 0.10 || percentCompleted > 0.90) {
                     this.groupInner.select('text').attr('x', ((x / h) * outerRadius * 1.1) + 39);
                     this.groupInner.select('line#line2').attr('x2', ((x / h) * outerRadius * 1.1) + 35);
@@ -738,46 +756,10 @@ module powerbi.extensibility.visual {
                 this.groupInner.select('line#line2')
                     .attr('style', 'stroke-width:0');
             }
-            this.group.select('#a123')
-                .attr('fill', this.data.actualColor)
-                .on('mouseover', function (): void {
-                    d3.select(this)
-                        .transition()
-                        .duration(100)
-                        .attr('d', d3.svg.arc()
-                            .innerRadius(innerRadius)
-                            .outerRadius(outerRadius * 1.08)
-                            .startAngle(2 * Math.PI * percentCompleted)
-                            .endAngle(2 * Math.PI));
-                })
-                .on('mouseout', function (): void {
-                    d3.select(this)
-                        .transition()
-                        .duration(100)
-                        .attr('d', arc);
-                });
+            this.mouseHover(innerRadius,outerRadius,percentCompleted,arc,arc1,width,height);
+        }
 
-            this.groupInner.select('#a1234')
-                .attr('fill', this.data.targetColor)
-                .on('mouseover', function (): void {
-                    d3.select(this)
-                        .transition()
-                        .duration(100)
-                        .attr('d', d3.svg.arc()
-                            .innerRadius(innerRadius)
-                            .outerRadius(outerRadius * 1.08)
-                            .startAngle(0)
-                            .endAngle(2 * Math.PI * percentCompleted));
-                })
-                .on('mouseout', function (): void {
-                    d3.select(this)
-                        .transition()
-                        .duration(100)
-                        .attr('d', arc1);
-                });
-
-            this.group.attr('transform', `translate(${(width / 2)},${(height / 2)})`);
-            this.groupInner.attr('transform', `translate(${(width / 2)},${(height / 2)})`);
+        private onHoverDisplay(options: VisualUpdateOptions, index: number, data: number, percentage: string, dataView: DataView): void {
             let actualIndex: number;
             let targetIndex: number;
             for (let i: number = 0; i < options.dataViews[0].metadata.columns.length; i++) {
@@ -839,6 +821,86 @@ module powerbi.extensibility.visual {
                     (tooltipEvent: TooltipEventArgs<number>) => this.data.toolTipInfo,
                     (tooltipEvent: TooltipEventArgs<number>) => null);
         }
+        private visualPrint(): void {
+            //By default, only category-1
+            this.range = {
+                range1: 0,
+                value1: CircularGauge.getFill(this.dataView, 'value1').solid.color,
+                range2: 0,
+                value2: CircularGauge.getFill(this.dataView, 'value2').solid.color,
+                range3: 0,
+                value3: CircularGauge.getFill(this.dataView, 'value3').solid.color,
+                range4: 0,
+                value4: CircularGauge.getFill(this.dataView, 'value4').solid.color
+            };
+
+            this.data.actualColor = CircularGauge.getFill(this.dataView, 'ActualFillColor').solid.color;
+            this.data.targetColor = CircularGauge.getFill(this.dataView, 'ComparisonFillColor').solid.color;
+
+            this.range.range1 = CircularGauge.getValue(this.dataView, 'legend', 'range1', null);
+            if (this.range.range1 !== null && this.range.range1 >= 100 || this.range.range1 <= 0) {
+                this.range.range1 = null;
+            }
+            this.range.range2 = CircularGauge.getValue(this.dataView, 'legend', 'range2', null);
+            if (this.range.range1 === null && this.range.range2 !== null) {
+                this.range.range2 = null;
+            } else if (this.range.range2 <= this.range.range1 || this.range.range2 > 100) {
+                this.range.range2 = null;
+            }
+
+            this.range.range3 = CircularGauge.getValue(this.dataView, 'legend', 'range3', null);
+            if (this.range.range2 === null && this.range.range3 !== null) {
+                this.range.range3 = null;
+            } else if (this.range.range3 <= this.range.range2 || this.range.range3 > 100) {
+                this.range.range3 = null;
+            }
+
+            //Category-4, being the last category, always ends at maximum value
+            this.range.range4 = 100;
+        }
+
+        private mouseHover(innerRadius: number,outerRadius: number,percentCompleted: number,arc: any,arc1: any,width: number,height: number) {
+            this.group.select('#a123')
+                .attr('fill', this.data.actualColor)
+                .on('mouseover', function (): void {
+                    d3.select(this)
+                        .transition()
+                        .duration(100)
+                        .attr('d', d3.svg.arc()
+                            .innerRadius(innerRadius)
+                            .outerRadius(outerRadius * 1.08)
+                            .startAngle(2 * Math.PI * percentCompleted)
+                            .endAngle(2 * Math.PI));
+                })
+                .on('mouseout', function (): void {
+                    d3.select(this)
+                        .transition()
+                        .duration(100)
+                        .attr('d', arc);
+                });
+
+            this.groupInner.select('#a1234')
+                .attr('fill', this.data.targetColor)
+                .on('mouseover', function (): void {
+                    d3.select(this)
+                        .transition()
+                        .duration(100)
+                        .attr('d', d3.svg.arc()
+                            .innerRadius(innerRadius)
+                            .outerRadius(outerRadius * 1.08)
+                            .startAngle(0)
+                            .endAngle(2 * Math.PI * percentCompleted));
+                })
+                .on('mouseout', function (): void {
+                    d3.select(this)
+                        .transition()
+                        .duration(100)
+                        .attr('d', arc1);
+                });
+
+            this.group.attr('transform', `translate(${(width / 2)},${(height / 2)})`);
+            this.groupInner.attr('transform', `translate(${(width / 2)},${(height / 2)})`);
+        }
 
         public getDefaultFormatSettings(): ICardFormatSetting {
             return {
@@ -882,7 +944,7 @@ module powerbi.extensibility.visual {
             this.legend.changeOrientation(position);
 
             this.legend.drawLegend(this.viewModel.legendData, _.clone(this.viewport));
-            Legend.positionChartArea(this.svg, this.legend);
+            legend.positionChartArea(this.svg, this.legend);
             this.svg.style('margin', 0);
             switch (this.legend.getOrientation()) {
                 case LegendPosition.Left:
@@ -905,7 +967,7 @@ module powerbi.extensibility.visual {
 
         public getSettings(objects: DataViewObjects): boolean {
             let settingsChanged: boolean = false;
-            if (typeof this.settings === 'undefined' || (JSON.stringify(objects) !== JSON.stringify(this.prevDataViewObjects))) {
+            if (typeof this.settings === undefined || (JSON.stringify(objects) !== JSON.stringify(this.prevDataViewObjects))) {
                 this.settings = {
                     colors: getValue(objects, 'labels', 'colors', 'grey'), // The color of the outer circle.
                     labelPrecision: getValue<number>(objects, 'labels', 'labelPrecision', 0),
@@ -921,10 +983,10 @@ module powerbi.extensibility.visual {
         // values which we can customized from property pane in Power BI
         public enumerateObjectInstances(options: EnumerateVisualObjectInstancesOptions): VisualObjectInstanceEnumeration {
             const enumeration: VisualObjectInstance[] = [];
-            const a: IProgressIndicatorValues = CircularGauge.getDefaultData();
+            const a: IProgressIndicatorValues = CircularGauge.GETDEFAULTDATA();
             const dataView: DataView = this.dataView;
             if (!this.data) {
-                this.data = CircularGauge.getDefaultData();
+                this.data = CircularGauge.GETDEFAULTDATA();
             }
             if (!this.cardFormatSetting) {
                 this.cardFormatSetting = this.getDefaultFormatSettings();

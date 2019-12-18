@@ -9,10 +9,8 @@
   },
   "files": [
     "src/objectEnumerationUtility.ts",
-    ".api/v2.1.0/PowerBI-visuals.d.ts",
-    "typings/index.d.ts",
+    ".api/v2.5.0/PowerBI-visuals.d.ts",
     "src/visual.ts",
-    "typings/index.d.ts",
     "node_modules/powerbi-visuals-utils-typeutils/lib/index.d.ts",
     "node_modules/powerbi-visuals-utils-svgutils/lib/index.d.ts",
     "node_modules/powerbi-visuals-utils-dataviewutils/lib/index.d.ts",
@@ -21,9 +19,10 @@
     "node_modules/powerbi-visuals-utils-formattingutils/lib/index.d.ts",
     "node_modules/powerbi-visuals-utils-interactivityutils/lib/index.d.ts",
     "node_modules/powerbi-visuals-utils-svgutils/lib/index.d.ts",
+    "node_modules/powerbi-visuals-utils-tooltiputils/lib/index.d.ts",
     "node_modules/powerbi-visuals-utils-typeutils/lib/index.d.ts",
     "node_modules/powerbi-visuals-utils-chartutils/lib/index.d.ts",
     "node_modules/powerbi-visuals-utils-tooltiputils/lib/index.d.ts",
-    "src/tooltipServiceWrapper.ts"
+    "node_modules/powerbi-models/dist/models-noexports.d.ts"
   ]
 }
